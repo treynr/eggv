@@ -33,9 +33,9 @@ MM10_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/mouse_10090/ASN1_flat/'
 HG37_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606_b149_GRCh37p13/ASN1_flat/'
 HG38_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606_b149_GRCh38p7/ASN1_flat/'
 ## Mouse chromosomes
-MOUSE_CHROMS = range(1, 23) + ['X', 'Y']
+MOUSE_CHROMS = range(1, 20) + ['X', 'Y']
 ## Human chromosomes
-HUMAN_CHROMS = range(1, 20) + ['X', 'Y']
+HUMAN_CHROMS = range(1, 23) + ['X', 'Y']
 
 def make_flat_file_name(chromosome):
     """
@@ -207,13 +207,8 @@ def write_snps(fp, snps):
     Write variant data to a file.
     Append variant data to a file.
     """
-    #with open(fp, 'w') as fl:
+
     with open(fp, 'a') as fl:
-        #print >> fl, '## %s v. %s' % (EXE, VERSION)
-        #print >> fl, '## %s' % FILETAG
-        #print >> fl, '## last updated %s' % util.get_today()
-        #print >> fl, '## RSID ALLELES MAF_ALLELE MAF CLINSIG ASSEMBLY|CHR|POS|ORIENT'
-        #print >> fl, '#'
 
         for snp in snps:
             assemblies = []
@@ -275,8 +270,8 @@ if __name__ == '__main__':
     usage = '%s [options] <genome-build> <output>' % argv[0]
     parse = OptionParser(usage=usage)
 
-    #parse.add_option('--delete', action='store_true', dest='delete', 
-    #             help='delete existing UniGene IDs')
+    parse.add_option('-t', '--touch', action='store_true', dest='touch', 
+                     help="don't write a new output file, just append to one")
     parse.add_option('--verbose', action='store_true', dest='verbose',
                      help='Clutter your screen with output')
 
@@ -301,32 +296,37 @@ if __name__ == '__main__':
 
     all_snps = []
     
-    touch_file(args[2])
+    if not opts.touch:
+        touch_file(args[2])
 
     ## This method: retrieving the ASN1 file, unzipping, and parsing everything
     ## in memory uses a ton of RAM. This worked fine on a server with 64GB but
     ## will probably shit the bed on servers with less memory.
     for chrom in chromosomes:
-        log.info('[+] Retrieving SNP data for chromosome %s...' % chrom)
+        log.info('[+] Retrieving SNP data for chr%s...' % chrom)
 
         contents = download_snp_file(ftp_url, chrom)
+
+        if not contents:
+            log.warn('[!] No chr%s data exists, skipping...' % chrom)
+            continue
 
         log.info('[+] Parsing SNP data...')
 
         snps = parse_asn1_flat_file(contents)
 
+        if not contents:
+            log.warn('[!] No chr%s SNPs were parsed, skipping...' % chrom)
+            continue
+
         log.info('[+] Writing SNP data...')
-        #all_snps.extend(snps)
+
         ## Periodically write things to a file otherwise the memory usage never
         ## stops growing
         write_snps(args[2], snps)
 
         del contents
         del snps
-
-    #log.info('[+] Writing SNP data...')
-
-    #write_snps(args[2], all_snps)
 
     log.info('[+] Done!')
 
