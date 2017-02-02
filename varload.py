@@ -203,12 +203,17 @@ def parse_asn1_flat_file(fl):
     return snps
 
 def write_snps(fp, snps):
-    with open(fp, 'w') as fl:
-        print >> fl, '## %s v. %s' % (EXE, VERSION)
-        print >> fl, '## %s' % FILETAG
-        print >> fl, '## last updated %s' % util.get_today()
-        print >> fl, '## RSID ALLELES MAF_ALLELE MAF CLINSIG ASSEMBLY|CHR|POS|ORIENT'
-        print >> fl, '#'
+    """
+    Write variant data to a file.
+    Append variant data to a file.
+    """
+    #with open(fp, 'w') as fl:
+    with open(fp, 'a') as fl:
+        #print >> fl, '## %s v. %s' % (EXE, VERSION)
+        #print >> fl, '## %s' % FILETAG
+        #print >> fl, '## last updated %s' % util.get_today()
+        #print >> fl, '## RSID ALLELES MAF_ALLELE MAF CLINSIG ASSEMBLY|CHR|POS|ORIENT'
+        #print >> fl, '#'
 
         for snp in snps:
             assemblies = []
@@ -231,6 +236,18 @@ def write_snps(fp, snps):
             )
 
             print >> fl, outstr
+
+def touch_file(fp):
+    """
+    Creates the initial output file and header.
+    """
+
+    with open(fp, 'w') as fl:
+        print >> fl, '## %s v. %s' % (EXE, VERSION)
+        print >> fl, '## %s' % FILETAG
+        print >> fl, '## last updated %s' % util.get_today()
+        print >> fl, '## RSID ALLELES MAF_ALLELE MAF CLINSIG ASSEMBLY|CHR|POS|ORIENT'
+        print >> fl, '#'
 
 def check_build(build):
     """
@@ -258,16 +275,8 @@ if __name__ == '__main__':
     usage = '%s [options] <genome-build> <output>' % argv[0]
     parse = OptionParser(usage=usage)
 
-    parse.add_option('-b', '--blacklist', action='store', type='string', 
-                 dest='blacklist', help='UniGene ID blacklist', metavar='FILE')
-    parse.add_option('-l', '--load', action='store', type='string', dest='load',
-                 help='load entrez2unigene data from a file', metavar='FILE')
-    parse.add_option('-s', '--save', action='store', type='string', dest='save',
-                 help='save the entrez2unigene data to a file', metavar='FILE')
-    parse.add_option('--no-commit', action='store_true', dest='nocommit', 
-                 help='don\'t commit changes to the DB')
-    parse.add_option('--delete', action='store_true', dest='delete', 
-                 help='delete existing UniGene IDs')
+    #parse.add_option('--delete', action='store_true', dest='delete', 
+    #             help='delete existing UniGene IDs')
     parse.add_option('--verbose', action='store_true', dest='verbose',
                      help='Clutter your screen with output')
 
@@ -292,6 +301,11 @@ if __name__ == '__main__':
 
     all_snps = []
     
+    touch_file(args[2])
+
+    ## This method: retrieving the ASN1 file, unzipping, and parsing everything
+    ## in memory uses a ton of RAM. This worked fine on a server with 64GB but
+    ## will probably shit the bed on servers with less memory.
     for chrom in chromosomes:
         log.info('[+] Retrieving SNP data for chromosome %s...' % chrom)
 
@@ -301,17 +315,18 @@ if __name__ == '__main__':
 
         snps = parse_asn1_flat_file(contents)
 
-        all_snps.extend(snps)
+        log.info('[+] Writing SNP data...')
+        #all_snps.extend(snps)
+        ## Periodically write things to a file otherwise the memory usage never
+        ## stops growing
+        write_snps(args[2], snps)
 
-    log.info('[+] Writing SNP data...')
+        del contents
+        del snps
 
-    write_snps(args[2], all_snps)
+    #log.info('[+] Writing SNP data...')
+
+    #write_snps(args[2], all_snps)
 
     log.info('[+] Done!')
-
-    #with open('ds_flat_ch19.flat', 'r') as fl:
-    #    contents = fl.read()
-    #    snps = parse_asn1_flat_file(contents)
-
-    #    write_snps('snps.txt', snps)
 
