@@ -1,0 +1,92 @@
+VARIANT LOADER README
+
+ABOUT
+
+	Three separate scripts (two main, one utility) that can be used to load
+	RefSNP variant data from NCBI into the GW DB. 
+
+	varget retrieves variant data from NCBI FTP servers and stores relevant
+	data in a minimal, tab delimited file. Currently the following species and
+	genome builds are supported:
+		
+		mus musculus / mm10
+		homo sapiens / hg19
+		homo sapiens / hg38
+	
+	Additional species can be supported with small code changes.
+
+	varload can either load the data produced by varget directly into the GW DB
+	or produce a special formatted file for use with the Postgres COPY command.
+	In many cases the variant data is too large to insert via python, which
+	makes the COPY formatted data useful.
+
+	varsplit is a small utility script that splits the varget produced data
+	file into several smaller files. 
+
+REQUIREMENTS
+	
+	python 2.7
+	GeneWeaver python library
+
+INSTALLATION
+
+	Install the GeneWeaver python library:
+		$ git clone gw@s1k.pw:gwlib
+
+
+
+VARGET SYNOPSIS
+
+	varget.py [OPTIONS] <genome-build> <output-file>
+
+VARGET OPTIONS
+
+	-a, --append
+		
+		don't write a new output file, append to an existing one
+
+	--verbose
+
+		clutter your screen with program output
+
+VARGET EXAMPLES
+
+	Retrieve all mouse variant data from NCBI and store in the file labeled
+	mm10-variants.tsv:
+
+		$ python varget.py mm10 mm10-variants.tsv
+
+
+
+VARLOAD SYNOPSIS
+
+	varload.py [OPTIONS] <genome-build> <variant-file>
+
+VARLOAD OPTIONS
+
+	-b, --builds
+		
+		print genome build supported by GeneWeaver and exit
+
+	-c, --copy <output-file>
+		
+		write data to <output-file> for use with the postgres COPY command
+
+	--no-commit
+
+		don't commit any database changes
+
+	--verbose
+
+		clutter your screen with program output
+
+VARLOAD EXAMPLES
+
+	Load mouse variants into the GW DB:
+
+		$ python varload.py mm10 mm10-variants.tsv
+
+	Save mouse variants to a COPY formatted file:
+
+		$ python varload.py -c mm10-variants-copy.tsv mm10 mm10-variants.tsv
+

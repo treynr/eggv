@@ -1,0 +1,13 @@
+## Ignore the following shit:
+#
+
+## everything inside the GW python library which is its own separate repo
+gwlib
+gwlib/**
+
+## stupid compiled python files
+*.pyc
+
+## vim swap files
+*.sw*
+

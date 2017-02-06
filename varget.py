@@ -16,7 +16,6 @@ from sys import argv
 ## my libs, which can be retreived with the command:
 ## git clone gw@s1k.pw:gwlib
 from gwlib import Log
-from gwlib import ncbi
 from gwlib import util
 
 ## Script info
@@ -193,7 +192,7 @@ def touch_file(fp):
         print >> fl, '## %s v. %s' % (EXE, VERSION)
         print >> fl, '## %s' % FILETAG
         print >> fl, '## last updated %s' % util.get_today()
-        print >> fl, '## RSID ALLELES MAF_ALLELE MAF CLINSIG ASSEMBLY|CHR|POS|ORIENT'
+        print >> fl, '## RSID ALLELES MA MAF CLINSIG ASSEMBLY|CHR|POS|ORIENT'
         print >> fl, '#'
 
 def check_build(build):
@@ -219,7 +218,7 @@ if __name__ == '__main__':
     from optparse import OptionParser
 
     ## cmd line shit
-    usage = '%s [options] <genome-build> <output>' % argv[0]
+    usage = '%s [options] <genome-build> <output-file>' % argv[0]
     parse = OptionParser(usage=usage)
 
     parse.add_option(
