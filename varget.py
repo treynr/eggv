@@ -4,7 +4,7 @@
 ## desc: Retrieves variant data from NCBI for a particular species and stores
 ##       it in an intermediate format that can be used for insertion into the 
 ##       GW DB.
-## vers: 0.1.0
+## vers: 0.1.12
 ## auth: TR
 #
 
@@ -20,7 +20,7 @@ from gwlib import util
 
 ## Script info
 EXE = 'varget'
-VERSION = '0.1.0'
+VERSION = '0.1.12'
 ## Tag output files with script arguments so we know how the data was generated
 FILETAG = reduce(lambda x, y: x + ' ' + y, argv)
 

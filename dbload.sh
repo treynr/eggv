@@ -3,7 +3,7 @@
 ## file: dbload
 ## desc: Small helper shell script to load the variant COPY sql file into
 ##       the database in the most efficient way possible.
-## vers: 0.1.0
+## vers: 0.1.12
 ## auth: TR
 #
 
