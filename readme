@@ -27,8 +27,8 @@ ABOUT
 	they retrieve and process. Some species (humans) have more variant data
 	than others and will take longer to process. For mouse variants, the varget
 	script takes ~50 minutes finish. Adding variants to the database using the 
-	COPY command takes around 10.5 hours (insertion with psycopg2 will probably
-	take a bit longer).
+	COPY command takes ~2 hours with the dbload script (insertion with 
+	psycopg2 will probably take a bit longer).
 
 REQUIREMENTS
 	
@@ -97,3 +97,13 @@ VARLOAD EXAMPLES
 
 		$ python varload.py -c mm10-variants-copy.tsv mm10 mm10-variants.tsv
 
+
+DBLOAD SYNOPSIS
+
+	dbload.sh <sql-file> <db-name> <db-user>
+
+DBLOAD EXAMPLE
+
+	Load the COPY formatted SQL file into the database:
+
+		$ dbload.sh mm10-variants-copy.tsv geneweaver-db geneweaver-user
