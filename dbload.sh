@@ -12,6 +12,9 @@ if [ $# -lt 3 ]; then
 	exit
 fi
 
+## COPY command requires an absolute path
+sql_path=$(realpath $1)
+
 trans_begin="BEGIN;"
 trans_end="COMMIT;"
 
@@ -29,24 +32,11 @@ make_idx2="CREATE INDEX variant_var_ref_id_gb_id_idx ON extsrc.variant (var_ref_
 make_idx3="CREATE INDEX variant_var_ref_id_var_allele_idx ON extsrc.variant (var_ref_id, var_allele);"
 make_idx4="CREATE INDEX variant_var_chromosome_var_position_idx ON extsrc.variant (var_chromosome, var_position);"
 
-copy="COPY extsrc.variant FROM $1;"
+copy="COPY extsrc.variant FROM '$sql_path';"
 
 read -s -p "DB password: " password
 
 connect_string="host=localhost dbname=$2 user=$3 password=$password"
-
-#read -r -d '' psql_command << EOM
-#$drop_idx0
-#$drop_idx1
-#$drop_idx2
-#$drop_idx3
-#$drop_idx4
-#$trans_begin
-#$copy
-#$trans_end
-#EOM
-#
-#echo "$psql_command" | psql -d $2 -U $3
 
 ## Drop indexes for faster insertion
 (psql "$connect_string" -c "$drop_idx0") &
@@ -58,7 +48,7 @@ connect_string="host=localhost dbname=$2 user=$3 password=$password"
 wait
 
 ## Insert the data
-psql "$connect_string" -c "$trans_begin $copy $trans_end"
+echo "$trans_begin $copy $trans_end" | psql "$connect_string" # -c "$trans_begin $copy $trans_end"
 
 ## Build indexes in parallel
 (psql "$connect_string" -c "$make_idx0") &
