@@ -216,7 +216,7 @@ def parse_variant_file_line(ln, build):
 
     snp = []
     snp.append('\N')
-    snp.append(ln[0])
+    snp.append(int(ln[0].strip('rs')))
     snp.append('\N')
 
     for ass in ln[5].split('||'):
