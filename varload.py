@@ -547,7 +547,7 @@ if __name__ == '__main__':
         with db.PooledCursor() as cursor:
             cursor.copy_from(snps, 'extsrc.variant')
 
-    if not opts.nocommit and (not opts.copy or not opts.neo4j):
+    if not opts.nocommit and not opts.copy and not opts.neo4j:
         log.info('[+] Committing changes, no turning back now...')
 
         db.commit()

@@ -31,22 +31,44 @@ make_idx4="CREATE INDEX variant_var_chromosome_var_position_idx ON extsrc.varian
 
 copy="COPY extsrc.variant FROM $1;"
 
-read -r -d '' psql_command << EOM
-$drop_idx0
-$drop_idx1
-$drop_idx2
-$drop_idx3
-$drop_idx4
-$trans_begin
-$copy
-$trans_end
-$make_idx0
-$make_idx1
-$make_idx2
-$make_idx3
-$make_idx4
-$analyze
-EOM
+read -s -p "DB password: " password
 
-echo "$psql_command" | psql -d $2 -U $3
+connect_string="host=localhost dbname=$2 user=$3 password=$password"
+
+#read -r -d '' psql_command << EOM
+#$drop_idx0
+#$drop_idx1
+#$drop_idx2
+#$drop_idx3
+#$drop_idx4
+#$trans_begin
+#$copy
+#$trans_end
+#EOM
+#
+#echo "$psql_command" | psql -d $2 -U $3
+
+## Drop indexes for faster insertion
+(psql "$connect_string" -c "$drop_idx0") &
+(psql "$connect_string" -c "$drop_idx1") &
+(psql "$connect_string" -c "$drop_idx2") &
+(psql "$connect_string" -c "$drop_idx3") &
+(psql "$connect_string" -c "$drop_idx4") &
+
+wait
+
+## Insert the data
+psql "$connect_string" -c "$trans_begin $copy $trans_end"
+
+## Build indexes in parallel
+(psql "$connect_string" -c "$make_idx0") &
+(psql "$connect_string" -c "$make_idx1") &
+(psql "$connect_string" -c "$make_idx2") &
+(psql "$connect_string" -c "$make_idx3") &
+(psql "$connect_string" -c "$make_idx4") &
+
+wait
+
+## Re-analyze since we made some major changes
+psql "$connect_string" -c "$analyze"
 
