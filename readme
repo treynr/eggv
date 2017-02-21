@@ -23,6 +23,13 @@ ABOUT
 	varsplit is a small utility script that splits the varget produced data
 	file into several smaller files. 
 
+	These scripts will take some time to run due to the large amount of data
+	they retrieve and process. Some species (humans) have more variant data
+	than others and will take longer to process. For mouse variants, the varget
+	script takes ~50 minutes finish. Adding variants to the database using the 
+	COPY command takes around 10.5 hours (insertion with psycopg2 will probably
+	take a bit longer).
+
 REQUIREMENTS
 	
 	python 2.7

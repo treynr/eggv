@@ -316,6 +316,10 @@ if __name__ == '__main__':
         help="output data to a file for use with the postgres COPY command"
     )
     parse.add_option(
+        '-n', '--neo4j', action='store', type='str', dest='neo4j', 
+        help="output data to a file in a format suitable for input into neo4j"
+    )
+    parse.add_option(
         '--no-commit', action='store_true', dest='nocommit', 
         help="don't commit any database changes (useful for testing)"
     )
@@ -489,7 +493,9 @@ if __name__ == '__main__':
     start = time.clock()
 
     snps = read_and_build_strings(args[2], var_id, build_info, build_id, type_id)
-    snps = '\n'.join(snps)
+
+    if not opts.neo4j:
+        snps = '\n'.join(snps)
 
     log.info('    (%0.1f seconds)' % (time.clock() - start))
     log.info('[+] COPYing variant data...')
@@ -504,13 +510,44 @@ if __name__ == '__main__':
         with open(opts.copy, 'a') as fl:
             print >> fl, snps
 
+    elif opts.neo4j:
+
+        var_id = 0
+
+        with open(opts.neo4j, 'w') as fl:
+            print >> fl, 'id,ref_id,allele,chromosome,position,effect,ref_cur,obs_alleles,ma,maf,clinsig,build'
+
+            for snp in snps:
+                snp = snp.split('\t')
+                out = ''
+                out = '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' % (
+                    var_id,
+                    snp[1],
+                    snp[2],
+                    snp[3],
+                    snp[4],
+                    'unknown',
+                    'true',
+                    snp[7],
+                    snp[8] if snp[8] != '\N' else '',
+                    snp[9] if snp[9] != '\N' else '',
+                    args[1]
+                )
+                var_id += 1
+
+                print >> fl, out
+
+            ## 0, var_id; 1, var_ref_id; 2, var_allele; 3, var_chromosome; 
+            ## 4, var_position; 5, vt_id; 6, var_ref_cur; 7, var_obs_alleles;
+            ## 8, var_ma; 9, var_maf; 10, var_clinsig; 11, gb_id;
+
     else:
         snps = StringIO.StringIO(snps)
 
         with db.PooledCursor() as cursor:
             cursor.copy_from(snps, 'extsrc.variant')
 
-    if not opts.nocommit and not opts.copy:
+    if not opts.nocommit and (not opts.copy or not opts.neo4j):
         log.info('[+] Committing changes, no turning back now...')
 
         db.commit()
