@@ -25,7 +25,11 @@ ABOUT
 
 	These scripts will take some time to run due to the large amount of data
 	they retrieve and process. Some species (humans) have more variant data
-	than others and will take longer to process. For mouse variants, the varget
+	than others and will take longer to process. Additionally, they will also
+    use a large amount of memory. Processing SNPs for a single chromosome can
+    use up to 40GB of memory.
+    for humans takes 295 minutes.
+    For mouse variants, the varget
 	script takes ~50 minutes finish. Adding variants to the database using the 
 	COPY command takes ~2 hours with the dbload script (insertion with 
 	psycopg2 will probably take a bit longer).
