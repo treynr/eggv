@@ -27,7 +27,7 @@ ABOUT
 	they retrieve and process. Some species (humans) have more variant data
 	than others and will take longer to process. Additionally, they will also
     use a large amount of memory. Processing SNPs for a single chromosome can
-    use up to 40GB of memory.
+    use up to 100GB of memory.
     for humans takes 295 minutes.
     For mouse variants, the varget
 	script takes ~50 minutes finish. Adding variants to the database using the 
