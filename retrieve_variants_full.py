@@ -314,10 +314,6 @@ if __name__ == '__main__':
     parse = OptionParser(usage=usage)
 
     parse.add_option(
-        '-a', '--append', action='store_true', dest='append', 
-        help="don't write a new output file, append to an existing one"
-    )
-    parse.add_option(
         '-p', '--procs', action='store', dest='procs', type='int', default=1,
         help="number of parallel processes to use for processing variants"
     )

@@ -2,37 +2,12 @@ VARIANT LOADER README
 
 ABOUT
 
-	Three separate scripts (two main, one utility) that can be used to load
-	RefSNP variant data from NCBI into the GW DB. 
+    Scripts designed to retrieve and load variant data into GeneWeaver (GW).
+    There are three main scripts (two for retrieval, one for loading) that 
+    handle the bulk of the processing/loading and a number of utility scripts 
+    to help the process.
 
-	varget retrieves variant data from NCBI FTP servers and stores relevant
-	data in a minimal, tab delimited file. Currently the following species and
-	genome builds are supported:
-		
-		mus musculus / mm10
-		homo sapiens / hg19
-		homo sapiens / hg38
-	
-	Additional species can be supported with small code changes.
 
-	varload can either load the data produced by varget directly into the GW DB
-	or produce a special formatted file for use with the Postgres COPY command.
-	In many cases the variant data is too large to insert via python, which
-	makes the COPY formatted data useful.
-
-	varsplit is a small utility script that splits the varget produced data
-	file into several smaller files. 
-
-	These scripts will take some time to run due to the large amount of data
-	they retrieve and process. Some species (humans) have more variant data
-	than others and will take longer to process. Additionally, they will also
-    use a large amount of memory. Processing SNPs for a single chromosome can
-    use up to 100GB of memory.
-    for humans takes 295 minutes.
-    For mouse variants, the varget
-	script takes ~50 minutes finish. Adding variants to the database using the 
-	COPY command takes ~2 hours with the dbload script (insertion with 
-	psycopg2 will probably take a bit longer).
 
 REQUIREMENTS
 	
@@ -44,70 +19,116 @@ INSTALLATION
 	Install the GeneWeaver python library:
 		$ git clone gw@s1k.pw:gwlib
 
+SYNOPSIS
+
+    retrieve_variants_lite.py [OPTIONS] <genome-build> <output-file>
+
+    retrieve_variants_full.py [OPTIONS] <genome-build> <output-file>
+
+    load_variants.py [OPTIONS] <genome-build> <variant-file> 
+
+    annotate_variants.py [OPTIONS] <variant-file> <output-file>
+
+    merge-variants.sh [OPTIONS] <genome-build>
+
+    load-variants.sh [OPTIONS] <db-name> <db-user> <genome-build> <variant-file>
+
+    delete-variants.sh [OPTIONS] <db-name> <db-user>
 
 
-VARGET SYNOPSIS
+retrieve_variants_lite.py
 
-	varget.py [OPTIONS] <genome-build> <output-file>
+    There are two scripts for retrieving variant data from NCBI,
+    retrieve_variants_lite.py and retrieve_variants_full.py.
+    The differences between them is in the amount of data they retrieve from
+    NCBI, their disk space usage, and their run time.
+    Both retrieval scripts will take several hours to run; it's best to just
+    leave them running over night.
 
-VARGET OPTIONS
+    retrieve_variants_lite.py will pull most of the necessary information from
+    NCBI. It uses significantly less disk space (~250GB when using 4-5 parallel
+    processes) and has a much faster run time. However, due to the way NCBI
+    formats their dbSNP data sets, this script DOES NOT retrieve the functional
+    consequences for each variant or any gene annotations. If you're fine with
+    all variants having unknown functional consequences (variant_type table)
+    or having zero annotated genes, use this script.
 
-	-a, --append
-		
-		don't write a new output file, append to an existing one
+retrieve_variants_full.py
 
-	--verbose
+    retrieve_variants_full.py grabs all dbSNP data and includes functional
+    consequences and gene annotations. It uses more disk space (~400GB
+    when using 4-5 parallel processes) and takes longer to run. If you
+    want/need the extra data, use this script.
 
-		clutter your screen with program output
+load_variants.py
 
-VARGET EXAMPLES
+    The load_variants.py script does the final bit of processing and loads
+    dbSNP data into GW. It should not used directly but should be called by 
+    using the helper script, load-variants.sh. 
+    The helper script disables constraints/triggers and deletes/rebuilds
+    indexes for faster loading.
 
-	Retrieve all mouse variant data from NCBI and store in the file labeled
-	mm10-variants.tsv:
+annotate_variants.py
 
-		$ python varget.py mm10 mm10-variants.tsv
+    annotate_variants.py can be used to annotate variants to their genes. This
+    script can only operate on the output of retrieve_variants_full.py. It will
+    generate a flat file of annotated variants and another file containing
+    intergenic SNPs that were not annotated.
 
+merge-variants.sh
 
+    Both of the retrieval scripts gets variant separately for each chromosome.
+    This script merges each separate file into a single one required by the
+    loader scripts.
 
-VARLOAD SYNOPSIS
+load-variants.sh
 
-	varload.py [OPTIONS] <genome-build> <variant-file>
+    A helper script for loading procesed variant data into GW. This script will
+    disable DB constraints/triggers and delete any indexes prior to loading.
+    After the DB modifications, it uses load_variants.py to load the SNPs, then
+    rebuilds the indexes and runs VACUUM ANALYZE on each of the modified
+    tables.
+    This script has two modes of operation, the default which is fast, and a
+    slow mode. If disk space usage is important and you don't want to use an 
+    extra ~25GGB writing to disk, use the slow option. When you gotta go fast, 
+    stick with the default setting. The difference between the two is the slow 
+    option uses psycopg2 to load all of the variants. The fast option loads
+    only the genome coordinate data, then writes the variant data to disk, then
+    uses the postgres COPY command to load everything. The default version is
+    roughly 2x faster than using psycopg2.
 
-VARLOAD OPTIONS
+delete-variants.sh
 
-	-b, --builds
-		
-		print genome build supported by GeneWeaver and exit
-
-	-c, --copy <output-file>
-		
-		write data to <output-file> for use with the postgres COPY command
-
-	--no-commit
-
-		don't commit any database changes
-
-	--verbose
-
-		clutter your screen with program output
-
-VARLOAD EXAMPLES
-
-	Load mouse variants into the GW DB:
-
-		$ python varload.py mm10 mm10-variants.tsv
-
-	Save mouse variants to a COPY formatted file:
-
-		$ python varload.py -c mm10-variants-copy.tsv mm10 mm10-variants.tsv
+    A helper script to delete all variant related data from the DB. The script
+    leaves the tables intact, it only removes rows.
 
 
-DBLOAD SYNOPSIS
+EXAMPLE WORKFLOW
 
-	dbload.sh <sql-file> <db-name> <db-user>
+    Retrieve full dbSNP data sets from NCBI for the latest mouse genome build
+    using four parallel proceses to speed things up:
 
-DBLOAD EXAMPLE
+        $ python retrieve_variants_full.py -p 4 mm10 mm10-variants.tsv
 
-	Load the COPY formatted SQL file into the database:
+    The previous command will have generated files (one per chromosome) in a
+    format like e.g. chr1-mm10-variants.tsv. Merge them into a single file for
+    processing:
 
-		$ dbload.sh mm10-variants-copy.tsv geneweaver-db geneweaver-user
+        $ ./merge-variants.sh mm10
+
+    We should now have a single file called mm10-variants.tsv. We can annotate
+    them to genes for later use with the annotation script:
+
+        $ python annotate_variants.py mm10-variants.tsv annotated-mm10-variants.tsv
+
+
+    Or, we can load all of our variants into GeneWeaver. If the gwlib.cfg
+    configuration file exists in the current directory, we don't have to
+    provide any of the database credentials, just the build and variant file:
+
+        $ ./load-variants.sh -c mm10 mm10-variants.tsv
+
+    Alternatively, we could provide DB creds:
+
+        $ ./load-variants.sh gw_db_name gw_user mm10 mm10-variants.tsv
+

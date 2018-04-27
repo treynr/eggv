@@ -250,7 +250,7 @@ if __name__ == '__main__':
     )
     parse.add_option(
         '-p', '--procs', action='store', dest='procs', type='int', default=1,
-        help="don't write a new output file, append to an existing one"
+        help="number of parallel processes to use for processing variants"
     )
     parse.add_option(
         '--verbose', action='store_true', dest='verbose', 
