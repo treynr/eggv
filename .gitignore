@@ -11,3 +11,6 @@ gwlib/**
 ## vim swap files
 *.sw*
 
+## output files
+*.tsv
+*.txt

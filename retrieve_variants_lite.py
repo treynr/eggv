@@ -3,7 +3,7 @@
 ## file: retrieve_variants_lite.py
 ## desc: Retrieves variant data from NCBI for a particular species and stores
 ##       it in an intermediate format that can be used for insertion into the 
-##       GW DB. This format does not include gene annotation ro functional
+##       GW DB. This format does not include gene annotations or functional
 ##       consequences but is faster and uses less disk space.
 ## vers: 0.1.12
 ## auth: TR
@@ -21,7 +21,7 @@ from gwlib import Log
 from gwlib import util
 
 ## Script info
-EXE = 'varget'
+EXE = 'retrieve_variants_lite'
 VERSION = '0.1.12'
 ## Tag output files with script arguments so we know how the data was generated
 FILETAG = reduce(lambda x, y: x + ' ' + y, argv)
