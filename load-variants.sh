@@ -1,8 +1,7 @@
 #!/bin/bash
 
-## file: delete-variants.sh
-## desc: Small helper shell script to delete variant data from the DB to
-##       provide a clean slate for loading.
+## file: load-variants.sh
+## desc: Small helper shell script to load variant data into the DB.
 ## vers: 0.1.12
 ## auth: TR
 #

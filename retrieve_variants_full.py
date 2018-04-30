@@ -28,7 +28,8 @@ VERSION = '0.1.12'
 FILETAG = reduce(lambda x, y: x + ' ' + y, argv)
 
 ## Mouse variant repository
-MM10_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/mouse_10090/XML/'
+#MM10_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/mouse_10090/XML/'
+MM10_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/archive/mouse_10090/XML/'
 ## Human variant repos
 HG37_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606_b149_GRCh37p13/XML/'
 HG38_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606/XML/'
@@ -344,7 +345,7 @@ if __name__ == '__main__':
     if opts.procs > 1:
         log.warn('[!] Be careful using the -p/--procs options')
         log.warn('[!] Using >1 process will use significant amounts of disk space')
-        log.warn('[!] Downloading and parsing chromosomes 1-4 uses ~400GB')
+        log.warn('[!] Downloading and parsing hg38 chromosomes 1-4 uses ~400GB')
 
     all_snps = []
 

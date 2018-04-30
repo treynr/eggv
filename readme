@@ -93,9 +93,11 @@ load-variants.sh
     extra ~25GGB writing to disk, use the slow option. When you gotta go fast, 
     stick with the default setting. The difference between the two is the slow 
     option uses psycopg2 to load all of the variants. The fast option loads
-    only the genome coordinate data, then writes the variant data to disk, then
+    only the genomic coordinate data, writes the variant data to disk, then
     uses the postgres COPY command to load everything. The default version is
-    roughly 2x faster than using psycopg2.
+    roughly 2x faster than using psycopg2. It takes ~5 hours to load 
+    473,546,386 human variants and ~1.5 hours to load 126,478,343 mouse 
+    variants.
 
 delete-variants.sh
 
@@ -120,7 +122,6 @@ EXAMPLE WORKFLOW
     them to genes for later use with the annotation script:
 
         $ python annotate_variants.py mm10-variants.tsv annotated-mm10-variants.tsv
-
 
     Or, we can load all of our variants into GeneWeaver. If the gwlib.cfg
     configuration file exists in the current directory, we don't have to
