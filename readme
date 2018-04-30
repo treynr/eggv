@@ -7,8 +7,6 @@ ABOUT
     handle the bulk of the processing/loading and a number of utility scripts 
     to help the process.
 
-
-
 REQUIREMENTS
 	
 	python 2.7
@@ -16,8 +14,8 @@ REQUIREMENTS
 
 INSTALLATION
 
-	Install the GeneWeaver python library:
-		$ git clone gw@s1k.pw:gwlib
+    Run the installation script:
+		$ ./install.sh
 
 SYNOPSIS
 
