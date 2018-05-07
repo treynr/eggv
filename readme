@@ -50,12 +50,24 @@ retrieve_variants_lite.py
     all variants having unknown functional consequences (variant_type table)
     or having zero annotated genes, use this script.
 
+    NOTE: there may be times where this script will throw an exception while
+    retrieving or decompressing the retrieved variants (the exception is hard
+    to catch since an subprocess is used at this point). If this happens, it is
+    most likely because the URLs to the variant data locations have changed.
+    Check to make sure the NCBI FTP URLs are still working.
+
 retrieve_variants_full.py
 
     retrieve_variants_full.py grabs all dbSNP data and includes functional
     consequences and gene annotations. It uses more disk space (~400GB
     when using 4-5 parallel processes) and takes longer to run. If you
     want/need the extra data, use this script.
+
+    NOTE: there may be times where this script will throw an exception while
+    retrieving or decompressing the retrieved variants (the exception is hard
+    to catch since an subprocess is used at this point). If this happens, it is
+    most likely because the URLs to the variant data locations have changed.
+    Check to make sure the NCBI FTP URLs are still working.
 
 load_variants.py
 
@@ -103,6 +115,13 @@ delete-variants.sh
 
 
 EXAMPLE WORKFLOW
+
+    Make sure the genome builds and variant types have already been loaded into
+    the database. If they have not, there are two SQL files you can use to load
+    the latest human/mouse builds and all the necessary variant types.
+
+        $ psql -f genome_builds.sql
+        $ psql -f variant_types.sql
 
     Retrieve full dbSNP data sets from NCBI for the latest mouse genome build
     using four parallel proceses to speed things up:
