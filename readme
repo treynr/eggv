@@ -17,6 +17,10 @@ INSTALLATION
     Run the installation script:
 		$ ./install.sh
 
+    After the installation script finishes, running any of the python scripts
+    in this repo once will generate a configuration file that needs to be
+    filled out with database credentials.
+
 SYNOPSIS
 
     annotate_variants.py [OPTIONS] <variant-file> <output-file>
