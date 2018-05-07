@@ -19,20 +19,19 @@ INSTALLATION
 
 SYNOPSIS
 
-    retrieve_variants_lite.py [OPTIONS] <genome-build> <output-file>
-
-    retrieve_variants_full.py [OPTIONS] <genome-build> <output-file>
-
-    load_variants.py [OPTIONS] <genome-build> <variant-file> 
-
     annotate_variants.py [OPTIONS] <variant-file> <output-file>
-
-    merge-variants.sh [OPTIONS] <genome-build>
-
-    load-variants.sh [OPTIONS] <db-name> <db-user> <genome-build> <variant-file>
 
     delete-variants.sh [OPTIONS] <db-name> <db-user>
 
+    load-variants.sh [OPTIONS] <db-name> <db-user> <genome-build> <variant-file>
+
+    load_variants.py [OPTIONS] <genome-build> <variant-file> 
+
+    merge-variants.sh [OPTIONS] <genome-build>
+
+    retrieve_variants_full.py [OPTIONS] <genome-build> <output-file>
+
+    retrieve_variants_lite.py [OPTIONS] <genome-build> <output-file>
 
 retrieve_variants_lite.py
 
@@ -61,8 +60,8 @@ retrieve_variants_full.py
 load_variants.py
 
     The load_variants.py script does the final bit of processing and loads
-    dbSNP data into GW. It should not used directly but should be called by 
-    using the helper script, load-variants.sh. 
+    dbSNP data into GW. It should not be used directly (though it can be) 
+    but should be called by using the helper script, load-variants.sh. 
     The helper script disables constraints/triggers and deletes/rebuilds
     indexes for faster loading.
 
@@ -88,7 +87,7 @@ load-variants.sh
     tables.
     This script has two modes of operation, the default which is fast, and a
     slow mode. If disk space usage is important and you don't want to use an 
-    extra ~25GGB writing to disk, use the slow option. When you gotta go fast, 
+    extra ~25GB writing to disk, use the slow option. When you gotta go fast, 
     stick with the default setting. The difference between the two is the slow 
     option uses psycopg2 to load all of the variants. The fast option loads
     only the genomic coordinate data, writes the variant data to disk, then
@@ -123,7 +122,8 @@ EXAMPLE WORKFLOW
 
     Or, we can load all of our variants into GeneWeaver. If the gwlib.cfg
     configuration file exists in the current directory, we don't have to
-    provide any of the database credentials, just the build and variant file:
+    provide any of the database credentials, just the genome build and 
+    variant file:
 
         $ ./load-variants.sh -c mm10 mm10-variants.tsv
 

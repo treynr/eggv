@@ -302,8 +302,9 @@ def check_build(build):
     if build == 'hg38' or build == 'grch38':
         return (HG38_FTP, HUMAN_CHROMS)
 
-    if build == 'hg19' or build == 'hg37' or build == 'grch37':
-        return (HG37_FTP, HUMAN_CHROMS)
+    ## hg37 support is disabled
+    #if build == 'hg19' or build == 'hg37' or build == 'grch37':
+    #    return (HG37_FTP, HUMAN_CHROMS)
 
     return (None, None)
 

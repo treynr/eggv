@@ -27,7 +27,7 @@ VERSION = '0.1.12'
 FILETAG = reduce(lambda x, y: x + ' ' + y, argv)
 
 ## Mouse variant repository
-MM10_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/mouse_10090/ASN1_flat/'
+MM10_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/archive/mouse_10090/ASN1_flat/'
 ## Human variant repos
 HG37_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606_b149_GRCh37p13/ASN1_flat/'
 HG38_FTP = 'ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606/ASN1_flat/'
@@ -232,8 +232,9 @@ def check_build(build):
     if build == 'hg38' or build == 'grch38':
         return (HG38_FTP, HUMAN_CHROMS)
 
-    if build == 'hg19' or build == 'hg37' or build == 'grch37':
-        return (HG37_FTP, HUMAN_CHROMS)
+    ## hg37 support is disabled
+    #if build == 'hg19' or build == 'hg37' or build == 'grch37':
+    #    return (HG37_FTP, HUMAN_CHROMS)
 
     return (None, None)
 

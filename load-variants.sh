@@ -80,14 +80,21 @@ else
     ## The file name created by load_variants looks something like 
     ## e.g. "hg38-variant-copy.tsv".
     ## The COPY command requires an absolute path
-    sql_path=$(realpath "${build}-variant-copy.tsv")
+    #sql_path=$(realpath "${build}-variant-copy.tsv")
+    copy_file="${build}-variant-copy.tsv"
+
+    ## Set permissions to rw/rw/rw and move to tmp folder so the postgres
+    ## server process can access the file
+    chmod 666 "$copy_file"
+    mv "$copy_file" "/tmp"
+
     columns="var_ref_id, var_allelel, vt_id, var_ref_cur, var_obs_alleles, var_ma, var_maf, var_clinsig, vri_id"
-    copy="COPY extsrc.variant ($columns) FROM '$sql_path' WITH NULL AS 'NULL';"
+    copy="COPY extsrc.variant ($columns) FROM '/tmp/$copy_file' WITH NULL AS 'NULL';"
 
     psql "$connect" -c "$copy"
 
     ## The copy input is no longer needed
-    rm "$sql_path"
+    rm "/tmp/$copy_file"
 fi
 
 psql "$connect" -c "ALTER TABLE extsrc.variant ENABLE TRIGGER ALL;"
