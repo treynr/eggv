@@ -6,6 +6,7 @@ ABOUT
     There are three main scripts (two for retrieval, one for loading) that 
     handle the bulk of the processing/loading and a number of utility scripts 
     to help the process.
+    See the bottom of this readme for an example workflow.
 
 REQUIREMENTS
 	
@@ -54,12 +55,6 @@ retrieve_variants_lite.py
     all variants having unknown functional consequences (variant_type table)
     or having zero annotated genes, use this script.
 
-    NOTE: there may be times where this script will throw an exception while
-    retrieving or decompressing the retrieved variants (the exception is hard
-    to catch since an subprocess is used at this point). If this happens, it is
-    most likely because the URLs to the variant data locations have changed.
-    Check to make sure the NCBI FTP URLs are still working.
-
 retrieve_variants_full.py
 
     retrieve_variants_full.py grabs all dbSNP data and includes functional
@@ -67,10 +62,11 @@ retrieve_variants_full.py
     when using 4-5 parallel processes) and takes longer to run. If you
     want/need the extra data, use this script.
 
-    NOTE: there may be times where this script will throw an exception while
-    retrieving or decompressing the retrieved variants (the exception is hard
-    to catch since an subprocess is used at this point). If this happens, it is
-    most likely because the URLs to the variant data locations have changed.
+    NOTE: there may be times where the lite/full scripts will throw an 
+    exception while retrieving or decompressing the retrieved variants (the 
+    exception is hard to catch since an subprocess is used at this point). 
+    If this happens, it is most likely because the URLs to the variant 
+    data locations have changed.
     Check to make sure the NCBI FTP URLs are still working.
 
 load_variants.py
@@ -108,8 +104,8 @@ load-variants.sh
     option uses psycopg2 to load all of the variants. The fast option loads
     only the genomic coordinate data, writes the variant data to disk, then
     uses the postgres COPY command to load everything. The default version is
-    roughly 2x faster than using psycopg2. It takes ~5 hours to load 
-    473,546,386 human variants and ~1.5 hours to load 126,478,343 mouse 
+    roughly 2x faster than using psycopg2. The fast version takes ~5 hours to 
+    load 473,546,386 human variants and ~1.5 hours to load 126,478,343 mouse 
     variants.
 
 delete-variants.sh

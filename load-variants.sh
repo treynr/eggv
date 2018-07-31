@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 ## file: load-variants.sh
 ## desc: Small helper shell script to load variant data into the DB.
@@ -67,7 +67,10 @@ psql "$connect" -c "ALTER TABLE odestatic.variant_type DISABLE TRIGGER ALL;"
 ## Delete indexes for faster loading
 psql "$connect" -c "DROP INDEX extsrc.variant_var_id_uindex;"
 psql "$connect" -c "DROP INDEX extsrc.variant_var_ref_id_index;"
+psql "$connect" -c "DROP INDEX extsrc.variant_vri_id_index;"
 psql "$connect" -c "DROP INDEX extsrc.variant_info_vri_id_index;"
+psql "$connect" -c "DROP INDEX extsrc.variant_info_vri_chromosome_vri_position_index;"
+
 
 ## Use slower method
 if [ -n "$slow" ]; then
@@ -75,6 +78,7 @@ if [ -n "$slow" ]; then
     python load_variants.py "$build" "$variants"
 else
 
+    ## Writes variant data to a file in a TSV format for postgres to load
     python load_variants.py --write "$build" "$variants"
 
     ## The file name created by load_variants looks something like 
@@ -103,7 +107,9 @@ psql "$connect" -c "ALTER TABLE odestatic.variant_type ENABLE TRIGGER ALL;"
 
 (psql "$connect" -c "CREATE UNIQUE INDEX variant_var_id_uindex ON extsrc.variant (var_id);") &
 (psql "$connect" -c "CREATE INDEX variant_var_ref_id_index ON extsrc.variant (var_ref_id);") &
+(psql "$connect" -c "CREATE INDEX variant_vri_id_index ON extsrc.variant (variant_vri_id_index);") &
 (psql "$connect" -c "CREATE INDEX variant_info_vri_id_index ON extsrc.variant_info (vri_id);") &
+(psql "$connect" -c "CREATE INDEX variant_info_vri_chromosome_vri_position_index ON extsrc.variant_info_vri_chromosome_vri_position_index (vri_id);") &
 
 wait
 

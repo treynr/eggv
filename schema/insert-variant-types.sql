@@ -1,3 +1,4 @@
+
 INSERT INTO odestatic.variant_type (vt_ref_id, vt_effect, vt_description)
 VALUES
     (NULL, 'unknown', 'Unkown variant effect'),
@@ -171,3 +172,4 @@ VALUES
     ('SO:0002008', 'rare_amino_acid_variant', 'A sequence variant whereby at least one base of a codon encoding a rare amino acid is changed, resulting in a different encoded amino acid.'),
     ('SO:0002010', 'pyrrolysine_loss', 'A sequence variant whereby at least one base of a codon encoding pyrrolysine is changed, resulting in a different encoded amino acid.'),
     ('SO:0002009', 'selenocysteine_loss', 'A sequence variant whereby at least one base of a codon encoding selenocysteine  is changed, resulting in a different encoded amino acid.');
+
