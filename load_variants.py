@@ -27,41 +27,6 @@ VERSION = '0.1.12'
 ## Tag output files with script arguments so we know how the data was generated
 FILETAG = reduce(lambda x, y: x + ' ' + y, argv)
 
-    
-def parse_variant_file(fp, gbid):
-    """
-    The variant file is produced by one of the retrieve_variants* scrpts and
-    contains the following columns:
-
-    (0)  (1)     (2)          (3) (4)
-    rsid alleles minor_allele maf clinical_significance
-
-    Alleles are separated by '/'. MA, MAF, and clinical significance fields may
-    possiblly be blank which is indicated by '.'.
-
-    Variant files retrieved using the "lite" version of the script will have
-    the above columns and an extra assembly column:
-
-    (5)
-    ASSEMBLY|CHR|POS|ORIENT
-
-    Files retrieved using the "full" version of the retrieval script will have
-    two extra columns, annotation and assembly columns:
-
-    (5)                         (6)
-    GENEID|SYMBOL|ALLELE|EFFECT ASSEMBLY|CHR|POS|ORIENT
-
-    The assembly column includes the name of the genome build, chromosome,
-    position in bp, and strand orientation.
-    The annotation column includes the Entrez gene ID and symbol of the
-    annotated gene, the SNP allele producing this effect, and the effect or
-    structural consequence of the SNP. The structural consequence is a sequence
-    ontology (SO) term.
-    """
-
-
-    return variants
-
 if __name__ == '__main__':
     from optparse import OptionParser
 
@@ -70,8 +35,16 @@ if __name__ == '__main__':
     parse = OptionParser(usage=usage)
 
     parse.add_option(
+        '-a', '--allele', action='store_true', dest='allele', 
+        help='create a separate variant entity for each unique allele'
+    )
+    parse.add_option(
         '-w', '--write', action='store_true', dest='write', 
         help='writes variant data to a file for use with the COPY command'
+    )
+    parse.add_option(
+        '--no-info', action='store_true', dest='noinfo', 
+        help="don't load variant_info data into the DB, write it to a file"
     )
     parse.add_option(
         '-d', '--dry-run', action='store_true', dest='dryrun',
@@ -125,6 +98,20 @@ if __name__ == '__main__':
 
     #with open(fp, 'r') as fl:
     with open(args[2], 'r') as fl:
+        print >> wfl, '\t'.join([
+            'rsid',
+            'allele',
+            'vt_id',
+            'current',
+            'obs_alleles',
+            'ma',
+            'maf',
+            'clinsig',
+            'chromosome',
+            'position',
+            'gb_id'
+        ])
+
         for ln in fl:
             ln = ln.strip()
 
@@ -208,10 +195,26 @@ if __name__ == '__main__':
 
             ## Create a variant entry for each allele
             #for allele in observed.split('/'):
-            for allele, effect in alleles:
+            if opts.allele:
+                for allele, effect in alleles:
+                    variants.append({
+                        'rsid': rsid.strip('rs'),
+                        'allele': allele,
+                        'observed': observed,
+                        'ma': ma,
+                        'maf': maf,
+                        'clinsig': clinsig,
+                        'build': build,
+                        'chrom': chrom,
+                        'coord': int(coord),
+                        'orient': orient,
+                        'effect': types[effect] if effect in types else unknown_type
+                    })
+            else:
+                effect = alleles[0][1]
                 variants.append({
                     'rsid': rsid.strip('rs'),
-                    'allele': allele,
+                    'allele': None,
                     'observed': observed,
                     'ma': ma,
                     'maf': maf,
@@ -230,38 +233,59 @@ if __name__ == '__main__':
                 'gb_id': build_id
             })
 
-            if len(locations) > 5000:
-
-                vris = db.insert_variant_infos(locations)
-                vri_map = dd(lambda: dd(int))
-
-                for vri in vris:
-                    chrom = vri['vri_chromosome']
-                    pos = vri['vri_position']
-
-                    vri_map[chrom][pos] = vri['vri_id']
+            ## Only works with allele so I don't have to write more code
+            if opts.noinfo:
 
                 for v in variants:
-                    v['vri_id'] = vri_map[v['chrom']][v['coord']]
-
-                    if opts.write:
-                        print >> wfl, '\t'.join([
-                            v['rsid'],
-                            v['allele'],
-                            str(v['effect']),
-                            't',
-                            v['observed'], 
-                            v['ma'] if v['ma'] else 'NULL',
-                            v['maf'] if v['maf'] else 'NULL',
-                            v['clinsig'],
-                            str(v['vri_id'])
-                        ])
-
-                if not opts.write:
-                    db.insert_variants(variants)
+                    print >> wfl, '\t'.join([
+                        v['rsid'],
+                        v['allele'] if v['allele'] else 'NULL',
+                        str(v['effect']),
+                        't',
+                        v['observed'], 
+                        v['ma'] if v['ma'] else 'NULL',
+                        v['maf'] if v['maf'] else 'NULL',
+                        v['clinsig'],
+                        locations[0]['chromosome'],
+                        locations[0]['position'],
+                        str(locations[0]['gb_id'])
+                    ])
 
                 variants = []
                 locations = []
+            else:
+                if len(locations) > 5000:
+
+                    vris = db.insert_variant_infos(locations)
+                    vri_map = dd(lambda: dd(int))
+
+                    for vri in vris:
+                        chrom = vri['vri_chromosome']
+                        pos = vri['vri_position']
+
+                        vri_map[chrom][pos] = vri['vri_id']
+
+                    for v in variants:
+                        v['vri_id'] = vri_map[v['chrom']][v['coord']]
+
+                        if opts.write:
+                            print >> wfl, '\t'.join([
+                                v['rsid'],
+                                v['allele'],
+                                str(v['effect']),
+                                't',
+                                v['observed'], 
+                                v['ma'] if v['ma'] else 'NULL',
+                                v['maf'] if v['maf'] else 'NULL',
+                                v['clinsig'],
+                                str(v['vri_id'])
+                            ])
+
+                    if not opts.write:
+                        db.insert_variants(variants)
+
+                    variants = []
+                    locations = []
 
     if opts.write:
         wfl.close()

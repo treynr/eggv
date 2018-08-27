@@ -58,18 +58,18 @@ if [ -z "$password" ]; then
 fi
 
 connect="host=localhost dbname=$dbname user=$dbuser password=$password"
+log="load-variants.log"
 
 ## Disable triggers for faster loading
-psql "$connect" -c "ALTER TABLE extsrc.variant DISABLE TRIGGER ALL;"
-psql "$connect" -c "ALTER TABLE extsrc.variant_info DISABLE TRIGGER ALL;"
-psql "$connect" -c "ALTER TABLE odestatic.variant_type DISABLE TRIGGER ALL;"
+psql "$connect" -c "ALTER TABLE extsrc.variant DISABLE TRIGGER ALL;" &> "$log"
+psql "$connect" -c "ALTER TABLE extsrc.variant_info DISABLE TRIGGER ALL;" &>> "$log"
+psql "$connect" -c "ALTER TABLE odestatic.variant_type DISABLE TRIGGER ALL;" &>> "$log"
 
 ## Delete indexes for faster loading
-psql "$connect" -c "DROP INDEX extsrc.variant_var_id_uindex;"
-psql "$connect" -c "DROP INDEX extsrc.variant_var_ref_id_index;"
-psql "$connect" -c "DROP INDEX extsrc.variant_vri_id_index;"
-psql "$connect" -c "DROP INDEX extsrc.variant_info_vri_id_index;"
-psql "$connect" -c "DROP INDEX extsrc.variant_info_vri_chromosome_vri_position_index;"
+psql "$connect" -c "DROP INDEX extsrc.variant_var_id_uindex;" &>> "$log"
+psql "$connect" -c "DROP INDEX extsrc.variant_var_ref_id_index;" &>> "$log"
+psql "$connect" -c "DROP INDEX extsrc.variant_info_vri_id_uindex;" &>> "$log"
+psql "$connect" -c "DROP INDEX extsrc.variant_info_vri_chromosome_vri_position_index;" &>> "$log"
 
 
 ## Use slower method
@@ -79,7 +79,7 @@ if [ -n "$slow" ]; then
 else
 
     ## Writes variant data to a file in a TSV format for postgres to load
-    python load_variants.py --write "$build" "$variants"
+    python load_variants.py --write "$build" "$variants" &>> "$log"
 
     ## The file name created by load_variants looks something like 
     ## e.g. "hg38-variant-copy.tsv".
@@ -92,28 +92,29 @@ else
     chmod 666 "$copy_file"
     mv "$copy_file" "/tmp"
 
-    columns="var_ref_id, var_allelel, vt_id, var_ref_cur, var_obs_alleles, var_ma, var_maf, var_clinsig, vri_id"
+    columns="var_ref_id, var_allele, vt_id, var_ref_cur, var_obs_alleles, var_ma, var_maf, var_clinsig, vri_id"
     copy="COPY extsrc.variant ($columns) FROM '/tmp/$copy_file' WITH NULL AS 'NULL';"
 
-    psql "$connect" -c "$copy"
+    psql "$connect" -c "$copy" &>> "$log"
 
     ## The copy input is no longer needed
-    rm "/tmp/$copy_file"
+    #rm "/tmp/$copy_file"
 fi
 
-psql "$connect" -c "ALTER TABLE extsrc.variant ENABLE TRIGGER ALL;"
-psql "$connect" -c "ALTER TABLE extsrc.variant_info ENABLE TRIGGER ALL;"
-psql "$connect" -c "ALTER TABLE odestatic.variant_type ENABLE TRIGGER ALL;"
+psql "$connect" -c "ALTER TABLE extsrc.variant ENABLE TRIGGER ALL;" &>> "$log"
+psql "$connect" -c "ALTER TABLE extsrc.variant_info ENABLE TRIGGER ALL;" &>> "$log"
+psql "$connect" -c "ALTER TABLE odestatic.variant_type ENABLE TRIGGER ALL;" &>> "$log"
 
-(psql "$connect" -c "CREATE UNIQUE INDEX variant_var_id_uindex ON extsrc.variant (var_id);") &
-(psql "$connect" -c "CREATE INDEX variant_var_ref_id_index ON extsrc.variant (var_ref_id);") &
-(psql "$connect" -c "CREATE INDEX variant_vri_id_index ON extsrc.variant (variant_vri_id_index);") &
-(psql "$connect" -c "CREATE INDEX variant_info_vri_id_index ON extsrc.variant_info (vri_id);") &
-(psql "$connect" -c "CREATE INDEX variant_info_vri_chromosome_vri_position_index ON extsrc.variant_info_vri_chromosome_vri_position_index (vri_id);") &
-
+## Rather than put these in an .sql file, they are called like this so all the
+## indexes can be created in parallel
+(psql "$connect" -c "CREATE UNIQUE INDEX variant_var_id_uindex ON extsrc.variant (var_id);" &>> "$log") &
+(psql "$connect" -c "CREATE INDEX variant_var_ref_id_index ON extsrc.variant (var_ref_id);" &>> "$log") &
+(psql "$connect" -c "CREATE UNIQUE INDEX variant_info_vri_id_uindex ON extsrc.variant_info (vri_id);" &>> "$log") &
+(psql "$connect" -c "CREATE INDEX variant_info_vri_chromosome_vri_position_index ON extsrc.variant_info (vri_chromosome, vri_position);" &>> "$log") &
+(psql "$connect" -c "CREATE INDEX variant_vri_id_index ON extsrc.variant (vri_id);" &>> "$log") &
 wait
 
-psql "$connect" -c "VACUUM ANALYZE extsrc.variant;"
-psql "$connect" -c "VACUUM ANALYZE extsrc.variant_info;"
-psql "$connect" -c "VACUUM ANALYZE odestatic.variant_type;"
+psql "$connect" -c "VACUUM ANALYZE extsrc.variant;" &>> "$log"
+psql "$connect" -c "VACUUM ANALYZE extsrc.variant_info;" &>> "$log"
+psql "$connect" -c "VACUUM ANALYZE odestatic.variant_type;" &>> "$log"
 

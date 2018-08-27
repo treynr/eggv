@@ -2,7 +2,7 @@
 DROP TABLE extsrc.variant;
 DROP TABLE production.variant_file;
 DROP TABLE odestatic.variant_type;
-DROP TABLE odestatic.variant_info;
+DROP TABLE extsrc.variant_info;
 DROP TABLE odestatic.genome_build;
 
 DELETE 

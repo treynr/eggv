@@ -34,7 +34,7 @@ if [[ -n "$config"  && -f "gwlib.cfg" ]]; then
     set -- "$dbname" "$dbuser" "$1" "$2"
 fi
 
-if [[ ($# -lt 4 && -z "$config") || -n "$help" ]]; then
+if [[ ($# -lt 2 && -z "$config") || -n "$help" ]]; then
 
     echo ""
 	echo "usage: $0 [options] <db-name> <db-user> <genome-build> <data-file> "
@@ -47,8 +47,6 @@ fi
 
 dbname="$1"
 dbuser="$2"
-build="$3"
-variants="$4"
 
 if [ -z "$password" ]; then
     read -s -p "DB password: " password

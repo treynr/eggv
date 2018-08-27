@@ -125,8 +125,8 @@ def process_snps(ifp, ofp):
         ## Opens the input SNP file as an iterator to lessen memory usage
         for event, elem in et.iterparse(ifp, events=('end', 'start-ns')):
 
-            ## Collect namespaces so we can remove the NCBI NS from element
-            ## tags
+            ## Collect namespaces so we can remove the NCBI 'NS' string from 
+            ## element tags
             if event == 'start-ns':
                 prefix, ns = elem
 

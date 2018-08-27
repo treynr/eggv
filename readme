@@ -108,20 +108,21 @@ load-variants.sh
     load 473,546,386 human variants and ~1.5 hours to load 126,478,343 mouse 
     variants.
 
-delete-variants.sh
+delete-schema.sh
 
-    A helper script to delete all variant related data from the DB. The script
-    leaves the tables intact, it only removes rows.
+    A helper script to delete all variant related data from the DB.
 
 
 EXAMPLE WORKFLOW
 
-    Make sure the genome builds and variant types have already been loaded into
-    the database. If they have not, there are two SQL files you can use to load
-    the latest human/mouse builds and all the necessary variant types.
+    Make sure the variant schema, genome builds, and variant types have already 
+    been added to the database.
+    If they have not, you can use the add-schema.sh helper script to load
+    the schema, latest human/mouse build metadata, and variant types.
+    This will add the schema and use the gwlib config to specify the database 
+    username and password.
 
-        $ psql -f genome_builds.sql
-        $ psql -f variant_types.sql
+        $ ./add-schema.sh -c
 
     Retrieve full dbSNP data sets from NCBI for the latest mouse genome build
     using four parallel proceses to speed things up:

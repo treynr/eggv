@@ -164,3 +164,27 @@ CREATE UNIQUE INDEX variant_file_vf_id_uindex ON production.variant_file (vf_id)
 
 COMMENT ON TABLE production.variant_file IS 'File to store raw variant data. Variant version of file table';
 
+CREATE TABLE extsrc.variant_merge
+(
+    vm_ref_old BIGINT NOT NULL,
+    vm_ref_new BIGINT NOT NULL,
+    gb_id INT NOT NULL,
+    CONSTRAINT variant_merge_genome_build_gb_id_fk FOREIGN KEY (gb_id) REFERENCES genome_build (gb_id)
+);
+
+CREATE INDEX variant_merge_vm_ref_old_index ON extsrc.variant_merge (vm_ref_old);
+
+COMMENT ON TABLE extsrc.variant_merge IS 'Reference SNP identifiers (rsID) that have been deprecated and merged into another rsID';
+
+COMMENT ON
+COLUMN extsrc.variant_merge.vm_ref_old
+IS 'Deprecated rsID';
+
+COMMENT ON
+COLUMN extsrc.variant_merge.vm_ref_new
+IS 'Current rsID';
+
+COMMENT ON
+COLUMN extsrc.variant_merge.gb_id
+IS 'Genome build';
+
