@@ -19,19 +19,19 @@ IS 'Supported genome builds for the variant table';
 
 COMMENT ON 
 COLUMN odestatic.genome_build.gb_ref_id
-IS 'The UCSC genome assembly ID. e.g. hg38, mm10, etc.';
+IS 'The UCSC genome assembly ID. e.g. hg38, mm10, etc';
 
 COMMENT ON 
 COLUMN odestatic.genome_build.gb_altref_id
-IS 'Any other alternate genome ID. e.g. GRCh38, GRCm38, etc.';
+IS 'Any other alternate genome ID, usually the NCBI reference. e.g. GRCh38, GRCm38, etc';
 
 COMMENT ON 
 COLUMN odestatic.genome_build.gb_description
-IS 'A description of the genome, usually just taken from NCBI.';
+IS 'A description of the genome, usually just taken from NCBI';
 
 COMMENT ON 
 COLUMN odestatic.genome_build.sp_id
-IS 'The species this genome belongs to.';
+IS 'The species this genome belongs to';
 
 CREATE TABLE extsrc.variant_info
 (
@@ -49,7 +49,7 @@ ON extsrc.variant_info (vri_chromosome, vri_position);
 
 COMMENT ON 
 TABLE extsrc.variant_info 
-IS 'This table connects varients with genome builds and includes genome positions';
+IS 'This table connects variants with genome builds and includes genome positions';
 
 COMMENT ON 
 COLUMN extsrc.variant_info.vri_chromosome
@@ -96,16 +96,16 @@ CREATE TABLE extsrc.variant
 (
     var_id BIGSERIAL PRIMARY KEY NOT NULL,
     var_ref_id BIGINT DEFAULT 0 NOT NULL,
-    var_allele VARCHAR,
-    vt_id INT NOT NULL,
+    -- var_allele VARCHAR,
+    vt_id INT[] NOT NULL,
     var_ref_cur BOOLEAN DEFAULT TRUE ,
     var_obs_alleles VARCHAR,
     var_ma VARCHAR,
     var_maf FLOAT,
     var_clinsig VARCHAR,
     vri_id INT NOT NULL,
-    CONSTRAINT variant_variant_info_vri_id_fk FOREIGN KEY (vri_id) REFERENCES variant_info (vri_id) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT variant_odestatic_variant_type_vt_id_fk FOREIGN KEY (vt_id) REFERENCES odestatic.variant_type (vt_id) ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT variant_variant_info_vri_id_fk FOREIGN KEY (vri_id) REFERENCES variant_info (vri_id) ON DELETE CASCADE ON UPDATE CASCADE
+    -- CONSTRAINT variant_odestatic_variant_type_vt_id_fk FOREIGN KEY (vt_id) REFERENCES odestatic.variant_type (vt_id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE UNIQUE INDEX variant_var_id_uindex ON extsrc.variant (var_id);
@@ -118,9 +118,9 @@ COMMENT ON
 COLUMN extsrc.variant.var_ref_id
 IS 'Similar to an ode_ref_id, a reference ID from an external source. This will almost always be an rs ID.';
 
-COMMENT ON 
-COLUMN extsrc.variant.var_allele
-IS 'The allele sequence of this particular variant.';
+--COMMENT ON 
+--COLUMN extsrc.variant.var_allele
+--IS 'The allele sequence of this particular variant.';
 
 COMMENT ON 
 COLUMN extsrc.variant.vt_id
@@ -168,6 +168,7 @@ CREATE TABLE extsrc.variant_merge
 (
     vm_ref_old BIGINT NOT NULL,
     vm_ref_new BIGINT NOT NULL,
+    vm_dbsnp_version INT NOT NULL,
     gb_id INT NOT NULL,
     CONSTRAINT variant_merge_genome_build_gb_id_fk FOREIGN KEY (gb_id) REFERENCES genome_build (gb_id)
 );
@@ -183,6 +184,10 @@ IS 'Deprecated rsID';
 COMMENT ON
 COLUMN extsrc.variant_merge.vm_ref_new
 IS 'Current rsID';
+
+COMMENT ON
+COLUMN extsrc.variant_merge.vm_dbsnp_version
+IS 'The NCBI dbSNP version for this merge';
 
 COMMENT ON
 COLUMN extsrc.variant_merge.gb_id
