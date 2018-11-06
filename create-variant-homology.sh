@@ -180,7 +180,7 @@ do
         ## Remove the rs prefix since we store these IDs as integers
         mlr --tsvlite put '$rsid = substr($rsid, 2, -1)' > "$out"
 
-        ## Remove the split file
+        ## Delete the split file
         rm "$vs"
     ) &
 done
