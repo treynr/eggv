@@ -8,7 +8,6 @@
 ##       script loads variant annotations into a temporary staging table, 
 ##       then uses several joins to determine ode_gene_ids for genes and 
 ##       variants, and finally stores the results in the homology table.
-## vers: 0.1.12
 ## auth: TR
 #
 
@@ -20,9 +19,16 @@ usage() {
 	echo "usage: $0 [options] <db-name> <db-user> <genome-build> <annotations>"
 	echo "usage: $0 [options] -c <genome-build> <data-file> "
     echo "" 
-    echo "    -c, --config  get <db-name> and <db-user> from the GW config file"
-    echo "    -s, --source  specify a hom_source_name for the new mappings (default = Variant)"
-    echo "    -h, --help    print this help message and exit"
+    echo "Generates and inserts variant-geen associations into the GeneWeaver database."
+    echo "Variant annotations are processed, inserted into a temporary staging table,"
+    echo "joined with the GW IDs, and finally added to the homology table."
+    echo ""
+    echo "Config options:"
+    echo "  -c, --config  get <db-name> and <db-user> from the GW config file"
+    echo ""
+    echo "Misc. options:"
+    echo "  -s, --source  specify a hom_source_name for the new mappings (default = Variant)"
+    echo "  -h, --help    print this help message and exit"
     echo ""
 	exit
 }
@@ -116,7 +122,7 @@ q_create_sequence="CREATE TEMP SEQUENCE hom_id_sequence INCREMENT BY 1;"
 q_set_sequence="SELECT setval('hom_id_sequence', (SELECT MAX(hom_id) FROM homology));"
 
 ## Query to create the staging table for loading annotations
-read -r -d '' q_create_temp <<- EOF
+read -r -d '' q_create_stage <<- EOF
     CREATE TEMP TABLE annotation_staging (
         rsid BIGINT,
         ensembl VARCHAR,
@@ -214,39 +220,29 @@ read -r -d '' q_insert_homology <<- EOF
     --
     ---- Join onto variant to get GW var_ids for each rsID in the staging table
     --
-    INNER JOIN variant v 
+    INNER JOIN extsrc.variant v 
     ON         st.rsid = v.var_ref_id 
     --
     ---- Join onto the gene table to get ode_gene_ids for the gene the
     ---- variant is found in.
-    ---- This assumes the Ensembl and gene symbol gene type IDs are 1 and 7
-    ---- respectively.
     --
-    INNER JOIN gene g
-    -- INNER JOIN (
-    --                 SELECT ode_gene_id, ode_ref_id 
-    --                 FROM   gene 
-    --                 WHERE  sp_id = $spid AND 
-    --                        (gdb_id = 1 OR gdb_id = 7)
-    --             ) g 
-    --
-    ---- The annotation file lists both Entrez IDs and gene symbols and we
-    ---- check against both
-    --
+    INNER JOIN exstrc.gene g
     ON         st.ensembl = g.ode_ref_id
-    -- ON          (st.symbol = g.ode_ref_id OR st.entrez = g.ode_ref_id)
     --
     ---- Finally we join onto the gene table once more to retrieve ode_gene_ids
     ---- for the rsIDs in the staging table using the var_ids we retrieved in the
     ---- first join. We convert var_id to varchar instead of converting
     ---- ode_ref_id to a bigint to take advantage of the gene table's index.
     --
-    INNER JOIN  gene gv 
-    ON          v.var_id::varchar = gv.ode_ref_id 
+    INNER JOIN  extsrc.gene gv 
+    ON          v.var_id :: VARCHAR = gv.ode_ref_id 
     WHERE       gv.sp_id = $spid AND 
                 gv.gdb_id = $vartype AND
-                -- Assumes Ensembl gene id is 2
-                g.gdb_id = 2 AND
+                g.gdb_id = (
+                    SELECT gdb_id 
+                    FROM   odestatic.genedb 
+                    WHERE  gdb_name = 'Ensembl Gene'
+                ) AND
                 g.sp_id = $spid;
 EOF
 
@@ -259,7 +255,7 @@ read -r -d '' q_create_variant_mapping <<EOF
     DROP INDEX IF EXISTS extsrc.homology_hom_source_name_idx;
     $q_create_sequence
     $q_set_sequence
-    $q_create_temp
+    $q_create_stage
     $q_copy_annotations
     CREATE INDEX ensembl_stage_index ON annotation_staging (ensembl);
     ANALYZE annotation_staging;
@@ -271,6 +267,7 @@ log "Inserting variant-gene annotations into the database"
 
 result=$(psql "$connect" -c "$q_create_variant_mapping")
 
+## Check the psql exit code for an error
 if [[ $? -ne 0 ]]; then
     echo "ERROR: psql returned a non-zero exit code. Looks like there were errors"
     echo "       creating the variant-gene homology relationships."
