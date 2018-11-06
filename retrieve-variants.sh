@@ -9,15 +9,6 @@
 ## Load the config file
 source "./config.sh"
 
-## We're using Ensembl release 91. You should change this for upgrades
-release=91
-## These URLs will need to be changed when you are upgrading to the latest
-## release
-hg38_url="ftp://ftp.ensembl.org/pub/release-$release/variation/gvf/homo_sapiens/homo_sapiens_incl_consequences.gvf.gz"
-mm10_url="ftp://ftp.ensembl.org/pub/release-$release/variation/gvf/mus_musculus/mus_musculus_incl_consequences.gvf.gz"
-
-log() { printf "[%s] %s\n" "$(date '+%Y.%m.%d %H:%M:%S')" "$*"; }
-
 usage() {
 
     echo "usage: $0 [options]"
@@ -116,52 +107,51 @@ if [[ -n "$force" || ! -f "${gvf}.gz" ]]; then
 
     log "Downloading $build data"
 
-    curl -s -S -o "${gvf}.gz" "$url"
+    curl -s -S -o "${gvf}.gz" "$variant_url"
 fi
 
-
-if [[ -n "$force" || ! -f "$gvf" ]]; then
-
-    log "Decompressing $build data"
-
-    $unzip -C -d "${gvf}.gz" > "$gvf"
-fi
-
-log "Splitting $build data for concurrent processing"
-
-## Split into ten evenly sized files
-split -C "$nsplit" -a 2 -d "$gvf" "variant-split"
-
-log "Formatting and processing $build data"
-
-## Process and format each of the split variant files in parallel
-for vs in "variant-split"*
-do
-    ## Isolate number for split file
-    n="${vs#variant-split}"
-
-    (
-        ## This script does the bulk of the processing work, including cleaning, 
-        ## formatting, filtering out unusable data, etc.
-        ./preprocess-variant-file.sh "$vs" > "${output}.$n"
-
-        ## Delete the split file since it's no longer needede
-        rm "$vs"
-    ) &
-done
-
-wait
-
-log "Merging preprocessed files"
-
-## Concatenate everything together, use miller so only a single header line 
-## is output
-mlr --tsvlite cat "$output".* > "$output"
-
-log "Cleaning up workspace"
-
-## Delete split files and uncompressed GVF file which is probably huge
-rm "variant-split"*
-rm "${output}."??
-rm "$gvf"
+#if [[ -n "$force" || ! -f "$gvf" ]]; then
+#
+#    log "Decompressing $build data"
+#
+#    $unzip -C -d "${gvf}.gz" > "$gvf"
+#fi
+#
+#log "Splitting $build data for concurrent processing"
+#
+### Split into ten evenly sized files
+#split -C "$nsplit" -a 2 -d "$gvf" "variant-split"
+#
+#log "Formatting and processing $build data"
+#
+### Process and format each of the split variant files in parallel
+#for vs in "variant-split"*
+#do
+#    ## Isolate number for split file
+#    n="${vs#variant-split}"
+#
+#    (
+#        ## This script does the bulk of the processing work, including cleaning, 
+#        ## formatting, filtering out unusable data, etc.
+#        ./preprocess-variant-file.sh "$vs" > "${output}.$n"
+#
+#        ## Delete the split file since it's no longer needede
+#        rm "$vs"
+#    ) &
+#done
+#
+#wait
+#
+#log "Merging preprocessed files"
+#
+### Concatenate everything together, use miller so only a single header line 
+### is output
+#mlr --tsvlite cat "$output".* > "$output"
+#
+#log "Cleaning up workspace"
+#
+### Delete split files and uncompressed GVF file which is probably huge
+#rm "variant-split"*
+#rm "${output}."??
+#rm "$gvf"
 
