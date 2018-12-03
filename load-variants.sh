@@ -148,37 +148,29 @@ read -r -d '' q_insert_variants <<- EOF
         var_clinsig,
         vri_id
 
-    ) SELECT   rsid, 
+    ) SELECT   vs.rsid, 
+               --
+               ---- A variant can be associated with multiple effects. This splits the
+               ---- effects list (from the staging table, separated by ',') into a table
+               ---- then joins the table onto variant_effect to get an array of variant
+               ---- effect IDs.
+               --
                (
                     SELECT      COALESCE(array_agg(distinct vt_id), '{1}') AS effects
-                    FROM        variant_type AS vt 
+                    FROM        odestatic.variant_type AS vt 
                     INNER JOIN  regexp_split_to_table(vs.effect, ',') AS effect 
                     ON          vt.vt_effect = effect
                ),
                true,
-               observed,
-               ma,
-               maf,
-               clinsig,
+               vs.observed,
+               vs.ma,
+               vs.maf,
+               vs.clinsig,
                vi.vri_id
     FROM       variant_staging vs
-               -- (
-               --      SELECT      array_agg(distinct vt_id) AS effects
-               --      FROM        variant_type AS vt 
-               --      INNER JOIN  regexp_split_to_table(vs.effect, ',') AS effect 
-               --      ON          vt.vt_effect = effect
-               -- ) vt_ids
-                    
     INNER JOIN extsrc.variant_info vi
     ON         vs.chromosome = vi.vri_chromosome AND 
                vs.position = vi.vri_position
-    -- INNER JOIN (
-    --                 SELECT      array_agg(distinct vt_id) AS effects
-    --                 FROM        variant_type AS vt 
-    --                 INNER JOIN  regexp_split_to_table(vs.effect, ',') AS effect 
-    --                 ON          vt.vt_effect = effect
-    --            ) vt_ids
-    -- ON         
     WHERE      vi.gb_id = (
                     SELECT  gb_id 
                     FROM    odestatic.genome_build 
