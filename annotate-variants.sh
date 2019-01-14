@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 ## file: annotate-variants.sh
-## desc: Annotates variants to Ensembl genes.
+## desc: Annotates genetic variants to Ensembl gene identifiers using upstream,
+##       downstream, or intragenic annotations.
 ## auth: TR
 
 ## Load the configuration file
@@ -12,7 +13,7 @@ usage() {
     echo "usage: $0 [options] <variants> <genes> <output>"
     echo ""
     echo "Annotate variants to Ensembl genes. Requires the variant and gene"
-    echo "data files to be in TSV output formats produced by the process-gvf-file.sh"
+    echo "data files to be in TSV output formats produced by the process-variants.sh"
     echo "and process-gtf-file.sh scripts respectively."
     echo "By default, this script will remove upstream/downstream intergenic variant"
     echo "annotations. To generate a file only containing these annotations, use the"

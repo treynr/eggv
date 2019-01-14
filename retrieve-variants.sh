@@ -18,8 +18,8 @@ usage() {
     echo "Ensembl v. $ENSEMBL"
     echo ""
     echo "Retrieval options:"
-    echo "  --human     retrieve human ($HUMAN_BUILD) variants"
-    echo "  --mouse     retrieve mouse ($MOUSE_BUILD) variants"
+    echo "  --hg38      retrieve human ($HG38_BUILD) variants"
+    echo "  --mm10      retrieve mouse ($MM10_BUILD) variants"
     echo "  -f, --force force data retrieval if the variant files already exist"
     echo ""
     echo "Misc options:"
@@ -37,14 +37,14 @@ filetag="$0 $@"
 while :; do
     case $1 in
 
-        --human)
-            build="$HUMAN_BUILD"
-            variant_url="$HUMAN_VARIANT_URL"
+        --hg38)
+            build="$HG38_BUILD"
+            variant_url="$HG38_VARIANT_URL"
             ;;
 
-        --mouse)
-            build="$MOUSE_BUILD"
-            variant_url="$MOUSE_VARIANT_URL"
+        --mm10)
+            build="$MM10_BUILD"
+            variant_url="$MM10_VARIANT_URL"
             ;;
 
         -f | --force)
@@ -80,9 +80,7 @@ if [[ -z "$build" ]]; then
 fi
 
 ## We'll save the Genome Variant Format (GVF) file from Ensembl to this filepath
-gvf="${build}-$ENSEMBL.gvf"
-## Filepath to the processed output
-output="${gvf%.gvf}-preprocessed.tsv"
+output="$DATA_DIR/${build}-$ENSEMBL.gvf"
 
 if [[ -n "$force" || ! -f "${gvf}.gz" ]]; then
 
