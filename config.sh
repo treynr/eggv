@@ -24,6 +24,10 @@ MM10_BUILD="mm10"
 HG38_VARIANT_URL="ftp://ftp.ensembl.org/pub/release-$ENSEMBL/variation/gvf/homo_sapiens/homo_sapiens_incl_consequences.gvf.gz"
 MM10_VARIANT_URL="ftp://ftp.ensembl.org/pub/release-$ENSEMBL/variation/gvf/mus_musculus/mus_musculus_incl_consequences.gvf.gz"
 
+## Ensembl FTP URLs for human and mouse genes.
+HG38_GENE_URL="ftp://ftp.ensembl.org/pub/release-$ENSEMBL/gtf/homo_sapiens/Homo_sapiens.GRCh38.${ENSEMBL}.gtf.gz"
+MM10_GENE_URL="ftp://ftp.ensembl.org/pub/release-$ENSEMBL/gtf/mus_musculus/Mus_musculus.GRCm38.${ENSEMBL}.gtf.gz"
+
 ## Location to save any executables
 EXE_DIR="$HOME/.local/bin"
 ## Returns the directory that contains config.sh regardless of where/how the script is

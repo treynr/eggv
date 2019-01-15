@@ -20,18 +20,24 @@ usage() {
     echo "Load variant metadata into GeneWeaver." 
     echo ""
     echo "Processing options:"
-    echo "  -s, --size  size of each subfile (default = 15GB)"
+    echo "  -c, --clean  if a failure occurs, clean up temporary files"
+    echo "  -s, --size   size of each subfile (default = 15GB)"
     echo ""
     echo "Misc. options:"
-    echo "  -h, --help  print this help message and exit"
+    echo "  -h, --help   print this help message and exit"
     echo ""
 }
 
 ## Default options if the user doesn't provide any
 split_size='10GB'
+clean=''
 
 while :; do
     case $1 in
+
+        -c | --clean)
+            clean=1
+            ;;
 
         -s | --size)
             if [ "$2"]; then
@@ -130,14 +136,15 @@ if [[ -z "$vartype" || $? -ne 0 ]]; then
     fi
 fi
 
-## Performs most of the steps to process the variant file into a format that
-## can be immediately ingested into the database.
+## This miller DSL performs most of the steps to process the variant file into a 
+## format that can be immediately ingested into the database using COPY.
 read -r -d '' process_variant_file <<-'EOF'
 
     ## First we add missing columns: 'current' which marks the status of the
     ## rsID as current and not deprecated, 'clinvar' which reports clinical
     ## significance, 'position' which indicates bp position of the variant,
-    ## and 'build' which is the variant genome build
+    ## and 'build' which is the variant genome build. Build is replaced later
+    ## in this script.
     $current = true;
     $clinsig = "unknown";
     $position = $start;
@@ -180,15 +187,18 @@ process_variant_file="${process_variant_file/!BUILD/$build}"
 
 ## Variant file locations that are accessible by the DB
 tmp_variants=$(mktemp)
-tmp_splits=$(mktemp -u)
+
+## Prefix to use for split files and the path where they are stored
+split_pre="lv-split"
+split_path="$DATA_DIR/$split_pre"
 
 ## Remove the header and split into evenly sized files for parallel processing
 mlr --tsv --headerless-csv-output cat "$variants" | 
-split -C "$split_size" -a 3 -d - "$tmp_splits"
+split -C "$split_size" -a 3 -d - "$split_path"
 
 log "Processing and formatting variants"
 
-for vs in "$tmp_splits"???
+for vs in "$split_path"???
 do
     out="$vs.formatted"
     (
@@ -207,20 +217,23 @@ wait
 
 log "Merging formatted variants"
 
-mlr --tsvlite cat "$tmp_splits"*formatted > "$tmp_variants"
+mlr --tsvlite cat "$split_path"*formatted > "$tmp_variants"
 
-rm "$tmp_splits"*
+rm "$split_path"*
 chmod 777 "$tmp_variants"
 
 ## Query to load the variants into the staging table
-copy_variants="COPY variant_staging FROM '$tmp_variants' WITH CSV HEADER NULL 'NULL' DELIMITER E'\t';"
+read -r -d '' copy_variants <<-EOF
+    \\copy variant_staging 
+    FROM   '$tmp_variants' 
+    WITH   CSV HEADER NULL 'NULL' DELIMITER E'\t';
+EOF
 
 ## Query to create the staging table for loading annotations
 read -r -d '' create_stage <<- EOF
     CREATE TEMP TABLE variant_staging (
 
         rsid        BIGINT,
-        -- allele      VARCHAR,
         effect      VARCHAR,
         current     BOOL,
         observed    VARCHAR,
@@ -260,6 +273,10 @@ read -r -d '' insert_variants <<- EOF
         vri_id
 
     ) SELECT   rsid, 
+               --
+               -- A variant may have multiple effects, we get IDs for each of them and
+               -- store them as an array.
+               --
                (
                     SELECT      COALESCE(array_agg(distinct vt_id), '{1}') AS effects
                     FROM        variant_type AS vt 
@@ -273,23 +290,10 @@ read -r -d '' insert_variants <<- EOF
                clinsig,
                vi.vri_id
     FROM       variant_staging vs
-               -- (
-               --      SELECT      array_agg(distinct vt_id) AS effects
-               --      FROM        variant_type AS vt 
-               --      INNER JOIN  regexp_split_to_table(vs.effect, ',') AS effect 
-               --      ON          vt.vt_effect = effect
-               -- ) vt_ids
                     
     INNER JOIN extsrc.variant_info vi
     ON         vs.chromosome = vi.vri_chromosome AND 
                vs.position = vi.vri_position
-    -- INNER JOIN (
-    --                 SELECT      array_agg(distinct vt_id) AS effects
-    --                 FROM        variant_type AS vt 
-    --                 INNER JOIN  regexp_split_to_table(vs.effect, ',') AS effect 
-    --                 ON          vt.vt_effect = effect
-    --            ) vt_ids
-    -- ON         
     WHERE      vi.gb_id = (
                     SELECT  gb_id 
                     FROM    odestatic.genome_build 
@@ -342,7 +346,7 @@ result=$(psql "$connect" -c "$create_variants")
 rm "$tmp_variants"
 
 if [[ $? -ne 0 ]]; then
-    echo "There was an error while populating the DB with variants"
+    echo "ERROR: There was a problem populating the DB with variant metadata"
     exit 1
 fi
 
@@ -363,3 +367,4 @@ wait
 (psql "$connect" -c "VACUUM ANALYZE odestatic.variant_type;") &
 
 wait
+

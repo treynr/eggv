@@ -1,46 +1,52 @@
 #!/usr/bin/env bash
 
 ## file: create-variant-odes.sh
-## desc: Small helper shell script to create ode_gene_ids for variants. The SQL
-##       queries and workflow for this are based off the loadvariants.py 
-##       script written by Erich. This should be a little faster since we do 
-##       scary things like dropping indexes and removing constraints. This
-##       script loads variant annotations into a temporary staging table, 
-##       then uses several joins to determine ode_gene_ids for genes and 
-##       variants, and finally stores the results in the homology table.
+## desc: Generate variant-gene assocations and store those associations as part
+##       of GeneWeaver's homology model.
 ## auth: TR
-#
 
+## Load the config
 source './config.sh'
+
+## Load the secrets
+source './secrets.sh'
 
 usage() {
 
     echo ""
-	echo "usage: $0 [options] <db-name> <db-user> <genome-build> <annotations>"
-	echo "usage: $0 [options] -c <genome-build> <data-file> "
+	echo "usage: $0 [options] <genome-build> <annotations> "
     echo "" 
-    echo "Generates and inserts variant-geen associations into the GeneWeaver database."
-    echo "Variant annotations are processed, inserted into a temporary staging table,"
-    echo "joined with the GW IDs, and finally added to the homology table."
+    echo "Process variant-gene associations and store them as part of GeneWeaver's"
+    echo "homology model."
     echo ""
-    echo "Config options:"
-    echo "  -c, --config  get <db-name> and <db-user> from the GW config file"
+    echo "Processing options:"
+    echo "  -s, --source  specify a hom_source_name for the new mappings (default = Variant)"
+    echo "  --size        size of each subfile used for parallel processing (default = 2GB)"
     echo ""
     echo "Misc. options:"
-    echo "  -s, --source  specify a hom_source_name for the new mappings (default = Variant)"
     echo "  -h, --help    print this help message and exit"
     echo ""
 	exit
 }
 
+## Default options if the user doesn't provide any
+split_size='2GB'
 hom_source_name="Variant"
 
 ## cmd line processing
 while :; do
     case $1 in
-        -c | --config)
-            config=1
-            ;;
+
+		 --size)
+			 if [ "$2"]; then
+				 split_size="$2"
+				 shift
+			 else
+				 echo "ERROR: --size requires an argument"
+				 echo "       e.g. '2GB', '1024MB', etc."
+				 exit 1
+			 fi
+			 ;;
 
         -s | --source)
             if [ "$2" ]; then
@@ -75,84 +81,50 @@ while :; do
     shift
 done
 
-## Check to see if we can grab database, user, and password info from the
-## config file used for the GW python library
-if [[ -n "$config"  && -f "gwlib.cfg" ]]; then
+## Check if the secrets were loaded
+if [[ -z "$db_name" || -z "$db_user" || -z "$db_pass" ]];
 
-    dbname=$(sed -n -r -e 's/database\s*=\s*(.+)/\1/p' gwlib.cfg)
-    dbuser=$(sed -n -r -e 's/user\s*=\s*(.+)/\1/p' gwlib.cfg)
-    password=$(sed -n -r -e 's/password\s*=\s*(.+)/\1/p' gwlib.cfg)
-
-    set -- "$dbname" "$dbuser" "$1" "$2"
+    echo "ERROR: There was a problem loading the secrets file."
+    echo "       DB credentials are missing."
+    exit 1
 fi
 
-## Print usage iff 1) the user has provided less than four arguments (DB, user, genome
-## build, and annotation filepath) and hasn't used the --config option, 2) the genome
-## build and annotation filepath arguments are missing.
-if [[ ($# -lt 4 && -z "$config") || (-z "$3" || -z "$4") ]]; then
+if [[ $# -lt 2 ]]; then
 
+    echo "ERROR: You need to provide <genome-build> and <annotations> arguments"
+    echo ""
     usage
-	exit 1
+    exit 1
 fi
 
-dbname="$1"
-dbuser="$2"
-build="$3"
-annotations="$4"
+connect="host=$db_host dbname=$db_name user=$db_user password=$db_pass"
 
-if [ -z "$password" ]; then
-    read -s -p "DB password: " password
-fi
+build="$1"
+annotations="$2"
 
-## Connection string for psql
-connect="host=localhost dbname=$dbname user=$dbuser password=$password"
-
-## SQL queries:
-
-## Query to get the sp_id for the genome build we're updating
+## Get the sp_id for the genome build we're updating
 q_spid="SELECT sp_id FROM odestatic.genome_build WHERE gb_ref_id = '$build';"
-
-## Query to get the gdb_id for the Variant gene type
-q_vartype="SELECT gdb_id FROM odestatic.genedb WHERE gdb_name = 'Variant';"
-
-## Query to generate an incremental sequence for the homology ID
-q_create_sequence="CREATE TEMP SEQUENCE hom_id_sequence INCREMENT BY 1;"
-
-## Query to set the homology ID sequence to the maximum homology ID
-q_set_sequence="SELECT setval('hom_id_sequence', (SELECT MAX(hom_id) FROM homology));"
-
-## Query to create the staging table for loading annotations
-read -r -d '' q_create_stage <<- EOF
-    CREATE TEMP TABLE annotation_staging (
-        rsid BIGINT,
-        ensembl VARCHAR,
-        effect VARCHAR
-    );
-EOF
-
-## Query the species for the given genome build, remove whitespace from the result
+## Query the species and remove whitespace
 spid=$(psql "$connect" -t -c "$q_spid" | sed -e 's/\s//g')
 
 ## If no species ID was returned or psql encountered an error then exit
 if [[ -z "$spid" || $? -ne 0 ]]; then
 
-    log "There was an error retrieving the species for the build you provided."
-    log "That genome build probably doesn't exist."
-    log "Exiting..."
-
+    echo "ERROR: There was an error retrieving the species for the build you provided."
+    echo "       That genome build probably doesn't exist."
     exit 1
 fi
 
-## Query the variant gdb_id from the gene table, remove whitespace from the result
+## Get the gdb_id for the Variant gene type
+q_vartype="SELECT gdb_id FROM odestatic.genedb WHERE gdb_name = 'Variant';"
+## Query the variant gdb_id and remove whitespace
 vartype=$(psql "$connect" -t -c "$q_vartype" | sed -e 's/\s//g')
 
 ## If no variant type ID was returned or psql encountered an error then exit
 if [[ -z "$vartype" || $? -ne 0 ]]; then
 
-    log "There was an error retrieving the variant gene type."
-    log "The variant gene type is probably missing from genedb."
-    log "Exiting..."
-
+    echo "ERROR: There was an error retrieving the variant gene type."
+    echo "       The variant gene type is probably missing from genedb."
     exit 1
 fi
 
@@ -161,17 +133,23 @@ tmp_annos=$(mktemp)
 ## Temp path to use for final annotation processing prior to insertion
 tmp_splits=$(mktemp -u)
 
+## Prefix to use for split files and the path where they are stored
+split_pre="cvh-split"
+split_path="$DATA_DIR/$split_pre"
+
 log "Splitting annotations to process concurrently"
 
 ## Remove the header which will be added back later, split the annotations into
 ## separate 2GB files that can be processed in parallel
-tail -n +2 "$annotations" | split -C 2GB -a 2 -d - "$tmp_splits"
+mlr --tsv --headerless-csv-output cat "$annotations" |
+split -C "$split_size" -a 2 -d - "$tmp_splits"
 
 log "Processing and formatting annotations"
 
-for vs in "$tmp_splits"??
+## Format annotations so they can be ingested using postgres COPY
+for vs in "$split_path"??
 do
-    out="$vs.formatted"
+    out="$vs.processed"
     (
         ## Add the header back
         mlr --implicit-csv-header --tsvlite label 'rsid,ensembl,biotype' "$vs" |
@@ -189,16 +167,35 @@ wait
 
 log "Finalizing formatted annotations"
 
-mlr --tsvlite cat "$tmp_splits"*formatted > "$tmp_annos"
+mlr --tsvlite cat "$split_path"*processed > "$tmp_annos"
 
 ## Remove processed files
-rm "$tmp_splits"*
+rm "$split_path"*
 
 ## Make sure the postgres server has permission to access this file
 chmod 777 "$tmp_annos"
 
 ## Query to load the annotations into the staging table
-q_copy_annotations="COPY annotation_staging FROM '$tmp_annos' WITH CSV HEADER DELIMITER E'\t';"
+read -r -d '' q_copy_annotations <<-EOF
+    \\copy annotation_staging 
+    FROM   '$tmp_annos' 
+    WITH   CSV HEADER DELIMITER E'\t';"
+EOF
+
+## Query to generate an incremental sequence for the homology ID
+q_create_sequence="CREATE TEMP SEQUENCE hom_id_sequence INCREMENT BY 1;"
+
+## Query to set the homology ID sequence to the maximum homology ID
+q_set_sequence="SELECT setval('hom_id_sequence', (SELECT MAX(hom_id) FROM homology));"
+
+## Query to create the staging table for loading annotations
+read -r -d '' q_create_stage <<- EOF
+    CREATE TEMP TABLE annotation_staging (
+        rsid BIGINT,
+        ensembl VARCHAR,
+        effect VARCHAR
+    );
+EOF
 
 ## Query to create the gene-variant associations
 read -r -d '' q_insert_homology <<- EOF
@@ -249,17 +246,22 @@ EOF
 ## Query to generate the variant-gene associations
 read -r -d '' q_create_variant_mapping <<EOF
     BEGIN TRANSACTION;
+    
     DROP INDEX IF EXISTS extsrc.homology_ode_gene_id_idx;
     DROP INDEX IF EXISTS extsrc.homology_hom_id_idx;
     DROP INDEX IF EXISTS extsrc.homology_hom_source_id_idx;
     DROP INDEX IF EXISTS extsrc.homology_hom_source_name_idx;
+
     $q_create_sequence
     $q_set_sequence
     $q_create_stage
     $q_copy_annotations
+
     CREATE INDEX ensembl_stage_index ON annotation_staging (ensembl);
     ANALYZE annotation_staging;
+
     $q_insert_homology
+
     END TRANSACTION;
 EOF
 
@@ -269,6 +271,7 @@ result=$(psql "$connect" -c "$q_create_variant_mapping")
 
 ## Check the psql exit code for an error
 if [[ $? -ne 0 ]]; then
+
     echo "ERROR: psql returned a non-zero exit code. Looks like there were errors"
     echo "       creating the variant-gene homology relationships."
     rm "$tmp_annos"

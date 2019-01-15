@@ -20,15 +20,15 @@ usage() {
     echo "-i/--intergenic option."
     echo ""
     echo "If memory is an issue, disable the duplicate SNP/gene pair removal"
-    echo "using the --duplicates option."
+    echo "using the --keep-duplicates option."
     echo ""
     echo "Processing options:"
-    echo "  --duplicates     keep duplicate SNP/gene pairs to reduce memory usage"
-    echo "  -i, --intergenic only annotate intergenic variants"
-    echo "  -s, --size       size of each subfile (default = 15GB)"
+    echo "  --keep-duplicates  keep duplicate SNP/gene pairs to reduce memory usage"
+    echo "  -i, --intergenic   only annotate intergenic variants"
+    echo "  -s, --size         size of each subfile (default = 15GB)"
     echo ""
     echo "Misc. options:"
-    echo "  -h, --help       print this help message and exit"
+    echo "  -h, --help         print this help message and exit"
 }
 
 ## This miller DSL will remove duplicate SNP/gene pairs from the input stream.
@@ -73,15 +73,13 @@ EOF
 ## Default options if the user doesn't provide any
 duplicates=""
 intergenic=""
-nsplit="15GB"
-## Arguments to this script so we know how the data file was generated
-filetag="$0 $@"
+split_size="15GB"
 
 ## cmd line processing
 while :; do
     case $1 in
 
-        -d | --duplicates)
+        --keep-duplicates)
             duplicates=1
             ;;
 
@@ -91,7 +89,7 @@ while :; do
 
         -s | --size)
             if [ "$2" ]; then
-                nsplit="$2"
+                split_size="$2"
                 shift
             else
                 echo "ERROR: --size requires an argument"
@@ -140,24 +138,24 @@ fi
 
 log "Splitting variant data for parallelization"
 
-splitfp="variant-split"
+## Prefix to use for split files and the path where they are stored
+split_pre="av-split"
+split_path="$DATA_DIR/$split_pre"
 
 ## Split into evenly sized files, we remove the header row which is recreated later
-mlr --tsv --headerless-csv-output cat "$variants" | split -C "$nsplit" -a 3 -d - "$splitfp"
-#tail -n +2 "$variants" 
+mlr --tsv --headerless-csv-output cat "$variants" | 
+split -C "$split_size" -a 3 -d - "$split_path"
 
 log "Annotating variants"
 
 ## Process and format each of the split variant files in parallel
-for vs in "$splitfp"*
+for vs in "$split_path"*
 do
     (
-        ## Isolate number for split file
-        n="${vs#$splitfp}"
-
         ## Miller DSL to filter out intergenic variants
         filt='$effect != "upstream_gene_variant" && $effect != "downstream_gene_variant"'
 
+        ## The user wishes to keep intergenic variants instead
         if [[ -n "$intergenic" ]]; then
             filt='$effect == "upstream_gene_variant" || $effect == "downstream_gene_variant"'
         fi
@@ -177,7 +175,7 @@ do
         ## Rename columns
         mlr --tsvlite label 'rsid,gene,gene_biotype,transcript,snp_effect' |
         ## Remove duplicates
-        mlr --tsvlite filter "$remove_duplicates" > "${output}.$n"
+        mlr --tsvlite filter "$remove_duplicates" > "${vs}.processed"
 
         ## Delete the split variant file
         rm "$vs"
@@ -188,14 +186,14 @@ wait
 
 log "Merging preprocessed files"
 
-## Merge individually processed files together
-mlr --tsvlite cat "${output}."??? > "$output"
+## Merge processed files together, use miller so only a single header is output
+mlr --tsvlite cat "${split_path}"*.processed > "$output"
 
 ## Clean up our mess
-rm "${output}."???
+rm "${split_path}"*
 
 log "Generating a lite version of the annotations"
 
 ## Compact version of the variants with only SNPs and genes
-mlr --tsvlite cut -f rsid,gene,gene_biotype "$output" > "${output%.tsv}-lite.tsv"
+mlr --tsvlite cut -f rsid,gene,gene_biotype "$output" > "${output%.*}-lite.tsv"
 
