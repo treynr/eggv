@@ -1,44 +1,53 @@
 #!/usr/bin/env bash
 
-## file: create-variant-odes.sh
-## desc: Small helper shell script to create ode_gene_ids for variants. The SQL
-##       queries and workflow for this are based off the loadvariants.py 
-##       script written by Erich. This should be a little faster since we do 
-##       scary things like dropping indexes and removing constraints. This
-##       script loads variant annotations into a temporary staging table, 
-##       then uses several joins to determine ode_gene_ids for genes and 
-##       variants, and stores the results in the homology table.
-## vers: 0.1.12
+## file: load-variants.sh
+## desc: Loads variant metadata into the GeneWeaver DB. Designed to load things
+##       as quickly as possible--this script will remove indexes and table constraints
+##       prior to loading.
 ## auth: TR
-#
 
-## Load the config file
+## Load the configuration file
 source './config.sh'
+
+## Load the secrets file which contains credentials
+source './secrets.sh'
 
 usage() {
 
     echo ""
-    echo "usage: $0 [options] <db-name> <db-user> <genome-build> <variants>"
-    echo "usage: $0 [options] -c <genome-build> <variants> "
+	echo "usage: $0 [options] <genome-build> <variants> "
     echo ""
-    echo "Loads variant metadata into the GeneWeaver database."
-    echo "Variant annotations are processed, inserted into a temporary staging table,"
-    echo "joined with the GW IDs, and finally added to the homology table."
+    echo "Load variant metadata into GeneWeaver." 
     echo ""
-    echo "Config options:"
-    echo "  -c, --config  get <db-name> and <db-user> from the GW config file"
+    echo "Processing options:"
+    echo "  -c, --clean  if a failure occurs, clean up temporary files"
+    echo "  -s, --size   size of each subfile (default = 15GB)"
     echo ""
     echo "Misc. options:"
-    echo "  -h, --help    print this help message and exit"
+    echo "  -h, --help   print this help message and exit"
     echo ""
-    exit
 }
+
+## Default options if the user doesn't provide any
+split_size='10GB'
+clean=''
 
 while :; do
     case $1 in
 
-        -c | --config)
-            config=1
+        -c | --clean)
+            clean=1
+            ;;
+
+        -s | --size)
+            if [ "$2"]; then
+                split_size="$2"
+                shift
+            else
+                echo "ERROR: --size requires an argument"
+                echo "       e.g. '2GB', '1024MB', etc."
+                exit 1
+            fi
             ;;
 
         -h | -\? | --help)
@@ -62,153 +71,80 @@ while :; do
     shift
 done
 
-## Check to see if we can grab database, user, and password info from the
-## config file used for the GW python library
-if [[ -n "$config"  && -f "gwlib.cfg" ]]; then
+## Check if the secrets were loaded
+if [[ -z "$db_name" || -z "$db_user" || -z "$db_pass" ]];
 
-    dbname=$(sed -n -r -e 's/database\s*=\s*(.+)/\1/p' gwlib.cfg)
-    dbuser=$(sed -n -r -e 's/user\s*=\s*(.+)/\1/p' gwlib.cfg)
-    password=$(sed -n -r -e 's/password\s*=\s*(.+)/\1/p' gwlib.cfg)
-
-    set -- "$dbname" "$dbuser" "$1" "$2"
-fi
-
-## Print usage iff 
-##  1) the user has provided less than four arguments (DB, user, genome build, and
-##     variant filepath) and hasn't used the --config option.
-##  2) the genome build and annotation filepath arguments are missing.
-if [[ ($# -lt 4 && -z "$config") || -n "$help" || (-z "$3" || -z "$4") ]]; then
-
-    usage
+    echo "ERROR: There was a problem loading the secrets file."
+    echo "       DB credentials are missing."
     exit 1
 fi
 
-dbname="$1"
-dbuser="$2"
-build="$3"
-variants="$4"
+## If the <genome-build> or <variants> arguments are missing, then print the usage 
+## and exit
+if [[ $# -lt 2 ]]; then
 
-if [ -z "$password" ]; then
-    read -s -p "DB password: " password
+    echo "ERROR: You need to provide the <genome-build> and <variants> arguments"
+    echo "       to the script."
+    echo ""
+    usage
+	exit 1
 fi
 
-connect="host=localhost dbname=$dbname user=$dbuser password=$password"
+connect="host=$db_host dbname=$db_name user=$db_user password=$db_pass"
 
-## SQL queries:
+build="$1"
+variants="$2"
 
-## Query to get the sp_id for the genome build we're updating
-q_spid="SELECT sp_id FROM odestatic.genome_build WHERE gb_ref_id = '$build';"
-
-## Query to get the gdb_id for the Variant gene type
-q_vartype="SELECT gdb_id FROM odestatic.genedb WHERE gdb_name = 'Variant';"
-
-## Query to create the staging table for loading annotations
-read -r -d '' q_create_stage <<- EOF
-    CREATE TEMP TABLE variant_staging (
-
-        rsid        BIGINT,
-        -- allele      VARCHAR,
-        effect      VARCHAR,
-        current     BOOL,
-        observed    VARCHAR,
-        ma          VARCHAR,
-        maf         FLOAT,
-        clinsig     VARCHAR,
-        chromosome  VARCHAR,
-        position    INT,
-        build       VARCHAR
-    );
-EOF
-
-## Query to insert genomic coordinates for a variant into the variant_info table
-read -r -d '' q_insert_variant_info <<- EOF
-
-    INSERT INTO extsrc.variant_info (vri_chromosome, vri_position, gb_id)
-    SELECT      chromosome, 
-                position, 
-                (
-                    SELECT  gb_id 
-                    FROM    odestatic.genome_build 
-                    WHERE   gb_ref_id = build
-                )
-    FROM        variant_staging;
-EOF
-
-## Query to insert variants and their metadata into the variant table
-read -r -d '' q_insert_variants <<- EOF
-    
-    INSERT INTO extsrc.variant (
-
-        var_ref_id,
-        vt_id,
-        var_ref_cur,
-        var_obs_alleles,
-        var_ma,
-        var_maf,
-        var_clinsig,
-        vri_id
-
-    ) SELECT   vs.rsid, 
-               --
-               ---- A variant can be associated with multiple effects. This splits the
-               ---- effects list (from the staging table, separated by ',') into a table
-               ---- then joins the table onto variant_effect to get an array of variant
-               ---- effect IDs.
-               --
-               (
-                    SELECT      COALESCE(array_agg(distinct vt_id), '{1}') AS effects
-                    FROM        odestatic.variant_type AS vt 
-                    INNER JOIN  regexp_split_to_table(vs.effect, ',') AS effect 
-                    ON          vt.vt_effect = effect
-               ),
-               true,
-               vs.observed,
-               vs.ma,
-               vs.maf,
-               vs.clinsig,
-               vi.vri_id
-    FROM       variant_staging vs
-    INNER JOIN extsrc.variant_info vi
-    ON         vs.chromosome = vi.vri_chromosome AND 
-               vs.position = vi.vri_position
-    WHERE      vi.gb_id = (
-                    SELECT  gb_id 
-                    FROM    odestatic.genome_build 
-                    WHERE   gb_ref_id = vs.build
-               );
-EOF
-
+## Checks to see if the genome build we're using exists
+spid="SELECT sp_id FROM odestatic.genome_build WHERE gb_ref_id = '$build';"
 ## Query and remove whitespace
 spid=$(psql "$connect" -t -c "$spid" | sed -e 's/\s//g')
 
 ## If no sp_id was returned, the genome build doesn't exist
 if [[ -z "$spid" || $? -ne 0 ]]; then
-    echo "There was an error retrieving the species for the build you provided"
-    echo "That genome build probably doesn't exist"
-    echo "Exiting..."
 
+    echo "ERROR: There was a problem retrieving the species for the build you provided."
+    echo "       That genome build probably doesn't exist."
     exit 1
 fi
 
+## Query to get the gdb_id for the Variant gene type
+vartype="SELECT gdb_id FROM odestatic.genedb WHERE gdb_name = 'Variant';"
 ## Query and remove whitespace
 vartype=$(psql "$connect" -t -c "$vartype" | sed -e 's/\s//g')
 
-## Can't do anything if the variant type is missing
+## If the variant gene type is missing, try to create it
 if [[ -z "$vartype" || $? -ne 0 ]]; then
-    echo "The variant gene type is missing from genedb"
-    echo "Exiting..."
 
-    exit 1
+    echo "ERROR: The variant gene type is missing from genedb."
+    echo "       This script will now attempt to create the variant gene type."
+
+    read -r -d '' varinsert <<-EOF
+        INSERT INTO odestatic.genedb 
+                    (gdb_name, sp_id, gdb_shortname, gdb_date)
+        VALUES      ('Variant', 0, 'variant', NOW())
+        RETURNING   gdb_id;
+	EOF
+
+    ## Query and remove whitespace
+    vartype=$(psql "$connect" -t -c "$varinsert" | sed -e 's/\s//g')
+
+    if [[ -z "$vartype" || $? -ne 0 ]]; then
+
+        echo "ERROR: Couldn't create the variant type."
+        exit 1
+    fi
 fi
 
-## Performs most of the steps to process the variant file into a format that
-## can be immediately ingested into the database.
+## This miller DSL performs most of the steps to process the variant file into a 
+## format that can be immediately ingested into the database using COPY.
 read -r -d '' process_variant_file <<-'EOF'
 
     ## First we add missing columns: 'current' which marks the status of the
     ## rsID as current and not deprecated, 'clinvar' which reports clinical
     ## significance, 'position' which indicates bp position of the variant,
-    ## and 'build' which is the variant genome build
+    ## and 'build' which is the variant genome build. Build is replaced later
+    ## in this script.
     $current = true;
     $clinsig = "unknown";
     $position = $start;
@@ -220,23 +156,22 @@ read -r -d '' process_variant_file <<-'EOF'
     ## observed field
     $observed = gsub($a1 . "," . $a2, ",", "/");
 
-    ## Remove the 'rs' prefix from the rsID since we store these as integers
+    ## Remove the 'rs' prefix from the rsID since we store these as 64bit integers
     $rsid = substr($rsid, 2, -1);
 
     ## Last, reformat the effects column to only include effect terms
     effects = splitnvx($effects, ";");
     map elist = {};
 
-    ## Loop through each effect
+    # Loop through each effect
     for (k, v in effects) {
 
-        ## Match on the effect
+        # Match on the effect
         v =~ "effect=([_a-z]+),";
 
-        ## Extract the effect
+        # Extract the effect
         effect = "\1";
 
-        ## Replace null effects with 'intergenic'
         if (effect == "0") { effect = "intergenic"; }
 
         elist[effect] = effect;
@@ -250,18 +185,20 @@ log "Splitting variants for parallel processing"
 ## Substutite the '!BUILD' string for the actual genome build
 process_variant_file="${process_variant_file/!BUILD/$build}"
 
-## Absolute path to the variant file in a place the postgres server can access 
+## Variant file locations that are accessible by the DB
 tmp_variants=$(mktemp)
-## Temp path to use for final variant processing prior to insertion
-tmp_splits=$(mktemp -u)
 
-## Split file to format in parallel, remove the header which will be added
-## back later
-tail -n +2 "$variants" | split -C 10GB -a 3 -d - "$tmp_splits"
+## Prefix to use for split files and the path where they are stored
+split_pre="lv-split"
+split_path="$DATA_DIR/$split_pre"
+
+## Remove the header and split into evenly sized files for parallel processing
+mlr --tsv --headerless-csv-output cat "$variants" | 
+split -C "$split_size" -a 3 -d - "$split_path"
 
 log "Processing and formatting variants"
 
-for vs in "$tmp_splits"???
+for vs in "$split_path"???
 do
     out="$vs.formatted"
     (
@@ -273,9 +210,6 @@ do
         mlr --tsvlite put "$process_variant_file" |
         ## Organize columns into their final positions
         mlr --tsvlite cut -o -f 'rsid,effects,current,observed,ma,maf,clinsig,chromosome,position,build' > "$out"
-
-        ## Delete the split file
-        rm "$vs"
     ) &
 done
 
@@ -283,23 +217,95 @@ wait
 
 log "Merging formatted variants"
 
-mlr --tsvlite cat "$tmp_splits"*formatted > "$tmp_variants"
+mlr --tsvlite cat "$split_path"*formatted > "$tmp_variants"
 
-## Remove processed files
-rm "$tmp_splits"*
-
-## Make sure the postgres server has permission to access this file
+rm "$split_path"*
 chmod 777 "$tmp_variants"
 
 ## Query to load the variants into the staging table
-q_copy_variants="COPY variant_staging FROM '$tmp_variants' WITH CSV HEADER NULL 'NULL' DELIMITER E'\t';"
+read -r -d '' copy_variants <<-EOF
+    \\copy variant_staging 
+    FROM   '$tmp_variants' 
+    WITH   CSV HEADER NULL 'NULL' DELIMITER E'\t';
+EOF
 
-## Query to insert the variant metadata into the proper tables
-read -r -d '' q_create_variants <<EOF
+## Query to create the staging table for loading annotations
+read -r -d '' create_stage <<- EOF
+    CREATE TEMP TABLE variant_staging (
+
+        rsid        BIGINT,
+        effect      VARCHAR,
+        current     BOOL,
+        observed    VARCHAR,
+        ma          VARCHAR,
+        maf         FLOAT,
+        clinsig     VARCHAR,
+        chromosome  VARCHAR,
+        position    INT,
+        build       VARCHAR
+    );
+EOF
+
+read -r -d '' insert_variant_info <<- EOF
+
+    INSERT INTO extsrc.variant_info (vri_chromosome, vri_position, gb_id)
+    SELECT      chromosome, 
+                position, 
+                (
+                    SELECT  gb_id 
+                    FROM    odestatic.genome_build 
+                    WHERE   gb_ref_id = build
+                )
+    FROM        variant_staging;
+EOF
+
+read -r -d '' insert_variants <<- EOF
+    
+    INSERT INTO extsrc.variant (
+
+        var_ref_id,
+        vt_id,
+        var_ref_cur,
+        var_obs_alleles,
+        var_ma,
+        var_maf,
+        var_clinsig,
+        vri_id
+
+    ) SELECT   rsid, 
+               --
+               -- A variant may have multiple effects, we get IDs for each of them and
+               -- store them as an array.
+               --
+               (
+                    SELECT      COALESCE(array_agg(distinct vt_id), '{1}') AS effects
+                    FROM        variant_type AS vt 
+                    INNER JOIN  regexp_split_to_table(vs.effect, ',') AS effect 
+                    ON          vt.vt_effect = effect
+               ),
+               true,
+               observed,
+               ma,
+               maf,
+               clinsig,
+               vi.vri_id
+    FROM       variant_staging vs
+                    
+    INNER JOIN extsrc.variant_info vi
+    ON         vs.chromosome = vi.vri_chromosome AND 
+               vs.position = vi.vri_position
+    WHERE      vi.gb_id = (
+                    SELECT  gb_id 
+                    FROM    odestatic.genome_build 
+                    WHERE   gb_ref_id = vs.build
+               );
+EOF
+
+read -r -d '' create_variants <<EOF
     BEGIN TRANSACTION;
 
-    ALTER TABLE extsrc.variant         DISABLE TRIGGER ALL;
-    ALTER TABLE extsrc.variant_info    DISABLE TRIGGER ALL;
+    ALTER TABLE extsrc.variant DISABLE TRIGGER ALL;
+    ALTER TABLE extsrc.variant_info DISABLE TRIGGER ALL;
     ALTER TABLE odestatic.variant_type DISABLE TRIGGER ALL;
 
     DROP INDEX IF EXISTS extsrc.variant_var_id_uindex;
@@ -308,11 +314,11 @@ read -r -d '' q_create_variants <<EOF
     DROP INDEX IF EXISTS extsrc.variant_info_vri_id_uindex;
     DROP INDEX IF EXISTS extsrc.variant_info_vri_chromosome_vri_position_index;
 
-    $q_create_stage
+    $create_stage
 
-    $q_copy_variants
+    $copy_variants
 
-    $q_insert_variant_info
+    $insert_variant_info
 
     CREATE INDEX stage_chromosome_position_index 
     ON           variant_staging (chromosome, position);
@@ -323,10 +329,10 @@ read -r -d '' q_create_variants <<EOF
     ANALYZE variant_staging;
     ANALYZE extsrc.variant_info;
 
-    $q_insert_variants
+    $insert_variants
 
-    ALTER TABLE extsrc.variant         ENABLE TRIGGER ALL;
-    ALTER TABLE extsrc.variant_info    ENABLE TRIGGER ALL;
+    ALTER TABLE extsrc.variant ENABLE TRIGGER ALL;
+    ALTER TABLE extsrc.variant_info ENABLE TRIGGER ALL;
     ALTER TABLE odestatic.variant_type ENABLE TRIGGER ALL;
 
     END TRANSACTION;
@@ -336,19 +342,15 @@ log "Inserting variants into the database"
 
 result=$(psql "$connect" -c "$create_variants")
 
-## Check the psql exit code for an error
+## Clean up our mess
+rm "$tmp_variants"
+
 if [[ $? -ne 0 ]]; then
-    echo "ERROR: psql returned a non-zero exit code. Looks like there were errors"
-    echo "       creating the inserting the variants"
-    rm "$tmp_variants"
+    echo "ERROR: There was a problem populating the DB with variant metadata"
     exit 1
 fi
 
-log "Cleaning up workspace"
-
-rm "$tmp_variants"
-
-log "Recreating indexes"
+log "Recreating indexes and vacuuming"
 
 ## Recreate the indexes
 (psql "$connect" -c "CREATE UNIQUE INDEX variant_info_vri_id_uindex ON extsrc.variant_info (vri_id);") &
@@ -359,8 +361,6 @@ log "Recreating indexes"
 (psql "$connect" -c "CREATE INDEX variant_info_vri_chromosome_vri_position_index ON extsrc.variant_info (vri_chromosome, vri_position);") &
 
 wait
-
-log "Vacuuming and analyzing the variant tables"
 
 (psql "$connect" -c "VACUUM ANALYZE extsrc.variant;") &
 (psql "$connect" -c "VACUUM ANALYZE extsrc.variant_info;") &
