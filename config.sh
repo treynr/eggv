@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 
 ## file: config.sh
-## desc: Contains configuration variables, commonly used functions, and URLs for the
-##       shell scripts in this directory.
-## vers: 0.1.0
+## desc: Contains configuration variables, commonly used functions, and data
+##       sources for the variant ETL pipeline.
 ## auth: TR
 
 log() { printf "[%s] %s\n" "$(date '+%Y.%m.%d %H:%M:%S')" "$*" >&2; }
@@ -35,10 +34,13 @@ EXE_DIR="$HOME/.local/bin"
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 ## Data directory where all raw and processed files live
 DATA_DIR="$SELF_DIR/data"
+## Log directory used *-pipeline.sh scripts
+LOG_DIR="$SELF_DIR/logs"
 
 ## Add executable directory to the path
 export PATH="$PATH:$EXE_DIR"
 
-## Make the data directory if it doesn't exist
+## Make directories if they don't exist
 mkdir -p "$DATA_DIR"
+mkdir -p "$LOG_DIR"
 

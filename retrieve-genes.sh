@@ -84,30 +84,8 @@ output="$DATA_DIR/${build}-$ENSEMBL.gtf"
 
 if [[ -n "$force" || ! -f "${output}.gz" ]]; then
 
-    log "Downloading $build data"
+    log "Downloading $build genes to ${output}.gz"
 
     wget --quiet -O "${output}.gz" "$gene_url"
 fi
-
-
-
-## Filepath to the Genome Variant Format (GVF) file from Ensembl
-gtf_fp="./${build}-$release.gtf"
-## Filepath to the processed output
-output="${gtf_fp%.gtf}-genes.tsv"
-
-if [[ -n "$force" || (! -f "$gtf_fp" && ! -f "${gtf_fp}.gz") ]]; then
-
-    log "Downloading $build gene data"
-
-    curl -s -S -o "${gtf_fp}.gz" "$url"
-
-    log "Decompressing $build gene data"
-
-    $unzip -d "${gtf_fp}.gz"
-fi
-
-log "Formatting and processing $build data"
-
-./process-gtf-file.sh "$gtf_fp" > "$output"
 

@@ -139,8 +139,7 @@ fi
 log "Splitting variant data for parallelization"
 
 ## Prefix to use for split files and the path where they are stored
-split_pre="av-split"
-split_path="$DATA_DIR/$split_pre"
+split_path="$(mktemp -u -p $DATA_DIR)"
 
 ## Split into evenly sized files, we remove the header row which is recreated later
 mlr --tsv --headerless-csv-output cat "$variants" | 
@@ -161,11 +160,7 @@ do
         fi
 
         ## Add header for each file
-        mlr --implicit-csv-header --tsvlite label 'rsid,chr,start,end,strand,a1,a2,maf,effects' "$vs" |
-        ## Separate each effect into it's own row, evar = explode values across records
-        mlr --tsvlite nest --evar ';' -f effects | 
-        ## Separate effect pairs into their own fields
-        mlr --tsvlite nest --explode --pairs --across-fields --nested-fs ',' --nested-ps '=' -f effects |
+        mlr --implicit-csv-header --tsvlite label 'rsid,chr,start,end,strand,a1,a2,maf,effect,biotype,transcript' "$vs" |
         ## Filter intergenic variants
         mlr --tsvlite filter "$filt" |
         ## Annotate variants based on the Ensembl transcript ID
@@ -190,7 +185,7 @@ log "Merging preprocessed files"
 mlr --tsvlite cat "${split_path}"*.processed > "$output"
 
 ## Clean up our mess
-rm "${split_path}"*
+rm "${split_path}"*.processed
 
 log "Generating a lite version of the annotations"
 

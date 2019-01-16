@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ## file: process-gvf-file.sh
-## desc: Performs processing steps on a single Genome Variant Format (GVF) file.
+## desc: Process a single Genome Variant Format (GVF) file.
 ##       Removes irrelevant fields (for our work) and formats the file for later use.
 ##       A GVF reference can be found here:
 ##       https://github.com/The-Sequence-Ontology/Specifications/blob/master/gvf.md
@@ -12,17 +12,16 @@ source "./config.sh"
 
 ## This miller DSL is used to isolate and format variant effects (and related data) 
 ## from data parsed out of the attributes column of the GVF file.
-## First, we check to see if the variant has an NCBI rsID, if it does great, if 
-## not then the Dbxref field is left alone.
-## Next, check to see if the variant has an effect, if it doesn't the DSL statement
-## fills in the Variant_effect field with null values, otherwise it parses out the
-## effects into their own fields. 
-## Last, check to see if the variant has a minor allele frequency (MAF), if it doesn't a 
-## value of zero is used as the MAF. 
 read -r -d '' format_effects <<-'EOF'
         
+    ## Check to see if the variant has a canonical reference SNP identifier, if it does
+    ## then great, if it doesn't leave Dbxref field is left as is
+    #
     $Dbxref =~ "dbSNP.+:(rs[0-9]+)" {$Dbxref="\1";};
 
+    ## If the variant doesn't have any effects, fill in the variant_effect field with
+    ## null values
+    #
     is_absent($Variant_effect) {$Variant_effect = "0 0 0 0";};
 
     m = splitnvx($Variant_effect, " ");
@@ -31,6 +30,8 @@ read -r -d '' format_effects <<-'EOF'
     $biotype = m[3];
     $ensembl = m[4];
 
+    ## Last, check if the variant has a MAF. If it doesn't, set MAF = 0
+    #
     if (is_absent($global_minor_allele_frequency)) {
 
         $maf = 0;
@@ -120,8 +121,8 @@ mlr --itsv --oxtab nest --explode --pairs --across-fields -f 9 --nested-ps '=' |
 mlr --xtab nest --explode --values --across-records -f 'Variant_effect' --nested-fs ',' |
 ## Reformat variant effects and minor allele frequency
 mlr --xtab put "$format_effects" |
-## Save only the necessary unnecessary columns
+## Save only the necessary columns
 mlr --ixtab --otsv --headerless-csv-output cut -o -f "$columns" |
-## Rename the columns
+## Rename the columns and send to stdout
 mlr --tsv --implicit-csv-header label "$newcols" 
 

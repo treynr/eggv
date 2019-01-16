@@ -8,19 +8,19 @@
 source './config.sh'
 
 ## Check to see if any prereqs are missing
-if [[ ! type "wget" &>/dev/null ]]; then
+if ! hash wget &>/dev/null; then
 
     log 'ERROR: wget is missing, please install it prior to using this pipeline'
     exit 1
 fi
 
-if [[ ! type "psql" &>/dev/null ]]; then
+if ! hash psql 2>/dev/null; then
 
     log 'ERROR: psql is missing. If you plan on loading variant metadata directly'
     log '       into a database, postgres and psql are required.'
 fi
 
-if [[ ! type "mlr" &>/dev/null ]]; then
+if ! hash mlr 2>/dev/null; then
 
     log 'Retrieving and installing miller v. 5.4.0'
 

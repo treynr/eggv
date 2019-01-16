@@ -62,11 +62,11 @@ input="$1"
 output="$2"
 
 ## Check if the file is compressed, if it is decompress it
-if [[ "${input##*.}" == ".gz" ]]; then
+if [[ "${input##*.}" == "gz" ]]; then
 
     log "Decompressing GTF input"
 
-    gunzip -C -d "$input" > "${input%.gz}"
+    gunzip -c -d "$input" > "${input%.gz}"
 
     input="${input%.gz}"
 fi
@@ -92,4 +92,9 @@ mlr --headerless-csv-output cut -o -f 'gene_id,transcript_id,gene_biotype' |
 mlr --otsv label 'gene,transcript,biotype' |
 ## Remove quotes from strings
 sed -e 's/"//g' > "$output"
+
+## Delete input file if the -d/--delete option is set. 
+[[ -n "$delete" ]] && rm "$input"
+
+log "Finished GTF file processing"
 

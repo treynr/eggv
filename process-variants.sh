@@ -72,6 +72,7 @@ while :; do
 done
 
 if [ $# -lt 2 ]; then
+    echo ""
     echo "ERROR: You need to provide an input GVF file"
     echo "       You need to provide an output filepath"
     echo ""
@@ -83,11 +84,11 @@ input="$1"
 output="$2"
 
 ## Check if the file is compressed, if it is decompress it
-if [[ "${input##*.}" == ".gz" ]]; then
+if [[ "${input##*.}" == "gz" ]]; then
 
     log "Decompressing GVF input"
 
-    gunzip -C -d "$input" > "${input%.gz}"
+    gunzip -c -d "$input" > "${input%.gz}"
 
     input="${input%.gz}"
 fi
@@ -99,6 +100,8 @@ split_pre="pv-split"
 split_path="$DATA_DIR/$split_pre"
 
 split -C "$size" -a 2 -d "$input" "$split_path"
+
+log "Processing GVF data"
 
 ## Process and format each of the split vairant files in parallel
 for vs in "$split_path"*
@@ -128,4 +131,6 @@ rm "${split_path}"*
 ## Delete input file if the -d/--delete option is set. A good idea in most cases b/c
 ## uncompressed GVF files are usualy huge.
 [[ -n "$delete" ]] && rm "$input"
+
+log "Finished GVF file processing"
 

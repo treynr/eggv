@@ -72,7 +72,7 @@ while :; do
 done
 
 ## Check if the secrets were loaded
-if [[ -z "$db_name" || -z "$db_user" || -z "$db_pass" ]];
+if [[ -z "$db_name" || -z "$db_user" || -z "$db_pass" ]]; then
 
     echo "ERROR: There was a problem loading the secrets file."
     echo "       DB credentials are missing."
@@ -224,9 +224,9 @@ chmod 777 "$tmp_variants"
 
 ## Query to load the variants into the staging table
 read -r -d '' copy_variants <<-EOF
-    \\copy variant_staging 
-    FROM   '$tmp_variants' 
-    WITH   CSV HEADER NULL 'NULL' DELIMITER E'\t';
+    COPY variant_staging 
+    FROM '$tmp_variants' 
+    WITH CSV HEADER NULL 'NULL' DELIMITER E'\t';
 EOF
 
 ## Query to create the staging table for loading annotations
@@ -354,7 +354,6 @@ log "Recreating indexes and vacuuming"
 
 ## Recreate the indexes
 (psql "$connect" -c "CREATE UNIQUE INDEX variant_info_vri_id_uindex ON extsrc.variant_info (vri_id);") &
-(psql "$connect" -c "CREATE INDEX variant_info_vri_index ON extsrc.variant_info (vri_id);") &
 (psql "$connect" -c "CREATE UNIQUE INDEX variant_var_id_uindex ON extsrc.variant (var_id);") &
 (psql "$connect" -c "CREATE INDEX variant_var_ref_id_index ON extsrc.variant (var_ref_id);") &
 (psql "$connect" -c "CREATE INDEX variant_vri_id_index ON extsrc.variant (vri_id);") &

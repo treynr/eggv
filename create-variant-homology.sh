@@ -177,9 +177,9 @@ chmod 777 "$tmp_annos"
 
 ## Query to load the annotations into the staging table
 read -r -d '' q_copy_annotations <<-EOF
-    \\copy annotation_staging 
-    FROM   '$tmp_annos' 
-    WITH   CSV HEADER DELIMITER E'\t';"
+    COPY annotation_staging 
+    FROM '$tmp_annos' 
+    WITH CSV HEADER DELIMITER E'\t';"
 EOF
 
 ## Query to generate an incremental sequence for the homology ID

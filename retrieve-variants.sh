@@ -84,7 +84,7 @@ output="$DATA_DIR/${build}-$ENSEMBL.gvf"
 
 if [[ -n "$force" || ! -f "${output}.gz" ]]; then
 
-    log "Downloading $build data"
+    log "Downloading $build variants to ${output}.gz"
 
     wget --quiet -O "${output}.gz" "$variant_url"
 fi
