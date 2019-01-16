@@ -6,10 +6,10 @@
 ## auth: TR
 
 ## Load the config
-source './config.sh'
+[[ -f './config.sh' ]] && source './config.sh' || source '../config.sh'
 
 ## Load the secrets
-source './secrets.sh'
+[[ -f './secrets.sh' ]] && source './secrets.sh' || source '../secrets.sh'
 
 ## Check if the secrets were loaded
 if [[ -z "$db_name" || -z "$db_user" || -z "$db_pass" ]]; then

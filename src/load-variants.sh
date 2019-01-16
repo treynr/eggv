@@ -7,10 +7,10 @@
 ## auth: TR
 
 ## Load the configuration file
-source './config.sh'
+[[ -f './config.sh' ]] && source './config.sh' || source '../config.sh'
 
 ## Load the secrets file which contains credentials
-source './secrets.sh'
+[[ -f './secrets.sh' ]] && source './secrets.sh' || source '../secrets.sh'
 
 usage() {
 

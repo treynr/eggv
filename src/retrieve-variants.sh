@@ -7,7 +7,7 @@
 ## auth: TR
 
 ## Load the config file
-source "./config.sh"
+[[ -f './config.sh' ]] && source './config.sh' || source '../config.sh'
 
 usage() {
 

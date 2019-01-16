@@ -8,7 +8,7 @@
 ## auth: TR
 
 ## Load the config file
-source "./config.sh"
+[[ -f './config.sh' ]] && source './config.sh' || source '../config.sh'
 
 ## This miller DSL is used to isolate and format variant effects (and related data) 
 ## from data parsed out of the attributes column of the GVF file.
@@ -109,7 +109,7 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-## Read in the file using cat
+## Read in the file using miller cat
 mlr $header --skip-comments --headerless-csv-output cat "$1" |
 ## Only keep variants that are associated with a reference SNP identifier
 mlr --tsv --implicit-csv-header filter '$9 =~ "Dbxref=dbSNP"' |

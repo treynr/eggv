@@ -32,6 +32,8 @@ EXE_DIR="$HOME/.local/bin"
 ## Returns the directory that contains config.sh regardless of where/how the script is
 ## executed
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+## Script directory
+SRC_DIR="$SELF_DIR/src"
 ## Data directory where all raw and processed files live
 DATA_DIR="$SELF_DIR/data"
 ## Log directory used *-pipeline.sh scripts

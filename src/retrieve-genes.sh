@@ -6,7 +6,7 @@
 ## auth: TR
 
 ## Load the config
-source "./config.sh"
+[[ -f './config.sh' ]] && source './config.sh' || source '../config.sh'
 
 usage() {
 

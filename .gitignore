@@ -14,3 +14,6 @@ gwlib/**
 ## output files
 *.tsv
 *.txt
+
+## secrets
+secrets.sh

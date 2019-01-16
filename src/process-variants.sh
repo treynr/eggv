@@ -8,7 +8,7 @@
 ## auth: TR
 
 ## Load the config file
-source "./config.sh"
+[[ -f './config.sh' ]] && source './config.sh' || source '../config.sh'
 
 usage() {
 
@@ -109,7 +109,7 @@ do
     (
         ## This script does the bulk of the processing work, including cleaning,
         ## formatting, filtering out unusable data, etc.
-        ./process-variant-file.sh "$vs" > "${vs}.processed"
+        $SRC_DIR/process-variant-file.sh "$vs" > "${vs}.processed"
 
         ## Delete the split file since it's no longer needed
         rm "$vs"

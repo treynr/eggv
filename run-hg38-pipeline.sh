@@ -17,8 +17,8 @@ fi
 log "Retrieving variant and gene metadata from Ensembl..."
 
 ## Start by retrieving variant and gene data sources for the hg38 build
-(./retrieve-genes.sh --hg38 2> "$LOG_DIR/1a-retrieve-genes.log") & A=$!
-(./retrieve-variants.sh --hg38 2> "$LOG_DIR/1b-retrieve-variants.log") & B=$!
+($SRC_DIR/retrieve-genes.sh --hg38 2> "$LOG_DIR/1a-retrieve-genes.log") & A=$!
+($SRC_DIR/retrieve-variants.sh --hg38 2> "$LOG_DIR/1b-retrieve-variants.log") & B=$!
 
 ## Get return codes from subprocs
 wait $A && A=$?
@@ -46,8 +46,8 @@ variant_pre="$DATA_DIR/hg38-variants-preprocessed.tsv"
 log "Processing variant and gene metadata from Ensembl..."
 
 ## Completely process gene metadata and process the variants into a semi-usable format
-(./process-genes.sh "$gene_gz" "$gene_final" 2> "$LOG_DIR/2a-process-genes.log") & A=$!
-(./process-variants.sh -s "25GB" "$variant_gz" "$variant_pre" 2> "$LOG_DIR/2b-process-variants.log") & B=$!
+($SRC_DIR/process-genes.sh "$gene_gz" "$gene_final" 2> "$LOG_DIR/2a-process-genes.log") & A=$!
+($SRC_DIR/process-variants.sh -s "25GB" "$variant_gz" "$variant_pre" 2> "$LOG_DIR/2b-process-variants.log") & B=$!
 
 ## Get return codes from subprocs
 wait $A && A=$?
@@ -75,11 +75,11 @@ log "Annotating variants and loading variant metadata into the GW database..."
 
 ## Annotate intragenic and intergenic variants
 ## If disk space is an issue, run these one at a time
-(./annotate-variants.sh "$variant_pre" "$gene_final" "$variant_ann_intra" 2> "$LOG_DIR/3a-annotate-variants.log") & A=$!
-(./annotate-variants.sh -i "$variant_pre" "$gene_final" "$variant_ann_inter" 2> "$LOG_DIR/3b-annotate-variants.log") & B=$!
+($SRC_DIR/annotate-variants.sh "$variant_pre" "$gene_final" "$variant_ann_intra" 2> "$LOG_DIR/3a-annotate-variants.log") & A=$!
+($SRC_DIR/annotate-variants.sh -i "$variant_pre" "$gene_final" "$variant_ann_inter" 2> "$LOG_DIR/3b-annotate-variants.log") & B=$!
 
 ## and we can also simultaneously load the variants into the database
-(./load-variants.sh "hg38" "$variant_pre" 2> "$LOG_DIR/3c-load-variants.log") & C=$!
+($SRC_DIR/load-variants.sh "hg38" "$variant_pre" 2> "$LOG_DIR/3c-load-variants.log") & C=$!
 
 ## Get return codes from subprocs
 wait $A && A=$?
@@ -105,9 +105,9 @@ fi
 log "Generating variant GeneWeaver IDs and separating intergenic variants..."
 
 ## Create ode_gene_ids for all the variants
-(./create-variant-ode-ids.sh "hg38" 2> "$LOG_DIR/4a-create-variant-ode-ids.log") & A=$!
+($SRC_DIR/create-variant-ode-ids.sh "hg38" 2> "$LOG_DIR/4a-create-variant-ode-ids.log") & A=$!
 ## Separate intergenic variants into upstream/downstream
-(./separate-intergenic-variants.sh "$variant_ann_inter" 2> "$LOG_DIR/4b-separate-intergenic-variants.log") & B=$!
+($SRC_DIR/separate-intergenic-variants.sh "$variant_ann_inter" 2> "$LOG_DIR/4b-separate-intergenic-variants.log") & B=$!
 
 ## Get return codes from subprocs
 wait $A && A=$?
@@ -130,7 +130,7 @@ log "Loading variant annotations into the GeneWeaver database..."
 downstream_ann="$DATA_DIR/hg38-annotated-variants-downstream-lite.tsv"
 upstream_ann="$DATA_DIR/hg38-annotated-variants-upstream-lite.tsv"
 
-./create-variant-homology.sh -s "Variant" "hg38" "$variant_ann_intra_lite"
+$SRC_DIR/create-variant-homology.sh -s "Variant" "hg38" "$variant_ann_intra_lite"
 
 if [[ $? -ne 0 ]]; then
 
@@ -138,7 +138,7 @@ if [[ $? -ne 0 ]]; then
 	exit 1
 fi
 
-./create-variant-homology.sh -s "Variant (Downstream)" "hg38" "$downstream_ann"
+$SRC_DIR/create-variant-homology.sh -s "Variant (Downstream)" "hg38" "$downstream_ann"
 
 if [[ $? -ne 0 ]]; then
 
@@ -146,7 +146,7 @@ if [[ $? -ne 0 ]]; then
 	exit 1
 fi
 
-./create-variant-homology.sh -s "Variant (Upstream)" "hg38" "$upstream_ann"
+$SRC_DIR/create-variant-homology.sh -s "Variant (Upstream)" "hg38" "$upstream_ann"
 
 if [[ $? -ne 0 ]]; then
 

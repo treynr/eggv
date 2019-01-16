@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ## file: install.sh
-## desc: Retrieves additional repos and python libraries associated required by
+## desc: Checks to make sure dependencies are met and retrieves one if it's missing.
 ##       this loader.
 ## auth: TR
 
