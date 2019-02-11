@@ -82,7 +82,7 @@ while :; do
 done
 
 ## Check if the secrets were loaded
-if [[ -z "$db_name" || -z "$db_user" || -z "$db_pass" ]];
+if [[ -z "$db_name" || -z "$db_user" || -z "$db_pass" ]]; then
 
     echo "ERROR: There was a problem loading the secrets file."
     echo "       DB credentials are missing."
@@ -130,8 +130,6 @@ fi
 
 ## Absolute path to the annotations in a place the postgres server can access
 tmp_annos=$(mktemp)
-## Temp path to use for final annotation processing prior to insertion
-tmp_splits=$(mktemp -u)
 
 ## Prefix to use for split files and the path where they are stored
 split_pre="cvh-split"
@@ -142,7 +140,7 @@ log "Splitting annotations to process concurrently"
 ## Remove the header which will be added back later, split the annotations into
 ## separate 2GB files that can be processed in parallel
 mlr --tsv --headerless-csv-output cat "$annotations" |
-split -C "$split_size" -a 2 -d - "$tmp_splits"
+split -C "$split_size" -a 2 -d - "$split_path"
 
 log "Processing and formatting annotations"
 
@@ -152,11 +150,13 @@ do
     out="$vs.processed"
     (
         ## Add the header back
-        mlr --implicit-csv-header --tsvlite label 'rsid,ensembl,biotype' "$vs" |
+        mlr --implicit-csv-header --tsvlite label 'rsid,gene,gene_biotype,transcript,snp_effect' "$vs" |
         ## Filter out things without an rsID
         mlr --tsvlite filter '$rsid =~ "^rs"' |
         ## Remove the rs prefix since we store these IDs as integers
-        mlr --tsvlite put '$rsid = substr($rsid, 2, -1)' > "$out"
+        mlr --tsvlite put '$rsid = substr($rsid, 2, -1)' |
+        ## Only keep relevant columns
+        mlr --tsvlite cut -f 'rsid,gene,snp_effect' > "$out"
 
         ## Delete the split file
         rm "$vs"
@@ -179,7 +179,7 @@ chmod 777 "$tmp_annos"
 read -r -d '' q_copy_annotations <<-EOF
     COPY annotation_staging 
     FROM '$tmp_annos' 
-    WITH CSV HEADER DELIMITER E'\t';"
+    WITH CSV HEADER DELIMITER E'\t';
 EOF
 
 ## Query to generate an incremental sequence for the homology ID
@@ -223,7 +223,7 @@ read -r -d '' q_insert_homology <<- EOF
     ---- Join onto the gene table to get ode_gene_ids for the gene the
     ---- variant is found in.
     --
-    INNER JOIN exstrc.gene g
+    INNER JOIN extsrc.gene g
     ON         st.ensembl = g.ode_ref_id
     --
     ---- Finally we join onto the gene table once more to retrieve ode_gene_ids
