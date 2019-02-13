@@ -150,13 +150,13 @@ do
     out="$vs.processed"
     (
         ## Add the header back
-        mlr --implicit-csv-header --tsvlite label 'rsid,gene,gene_biotype,transcript,snp_effect' "$vs" |
+        mlr --implicit-csv-header --tsvlite label 'rsid,gene,gene_biotype' "$vs" |
         ## Filter out things without an rsID
         mlr --tsvlite filter '$rsid =~ "^rs"' |
         ## Remove the rs prefix since we store these IDs as integers
         mlr --tsvlite put '$rsid = substr($rsid, 2, -1)' |
         ## Only keep relevant columns
-        mlr --tsvlite cut -f 'rsid,gene,snp_effect' > "$out"
+        mlr --tsvlite cut -f 'rsid,ensembl,effect' > "$out"
 
         ## Delete the split file
         rm "$vs"
