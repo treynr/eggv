@@ -57,7 +57,8 @@ _fp_mm10_gene_compressed = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf.gz')
 _fp_mm10_gene = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf')
 
 _fp_mm10_variant_compressed = Path(_dir_mm10_variant_raw, 'mm10-variant-build.gvf.gz')
-_fp_mm10_variant = Path(_dir_mm10_variant_raw, 'mm10-variant-build.gvf')
+_fp_mm10_variant_raw = Path(_dir_mm10_variant_raw, 'mm10-variant-build.gvf')
+_fp_mm10_variant_processed = Path(_dir_mm10_variant_proc, 'mm10-variant-build.tsv')
 
 
 ## In case these don't exist

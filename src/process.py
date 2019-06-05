@@ -51,7 +51,10 @@ def read_gvf_file(fp: str) -> ddf.DataFrame:
         'attr'
     ]
 
-    return ddf.read_csv(fp, sep='\t', comment='#', header=None, names=header)
+    ## Sometimes type inference fails since not all chromosomes (seqid) are numbers
+    return ddf.read_csv(
+        fp, sep='\t', comment='#', header=None, names=header, dtype={'seqid': 'object'}
+    )
 
 
 def read_gtf_file(fp: str) -> ddf.DataFrame:
@@ -365,189 +368,104 @@ def consolidate_saved_variants(input: str, output: str):
     return True
 
 
-def run_hg38_variant_processing(client: Client) -> Future:
+def process_variants(
+    client: Client,
+    fp: str,
+    outdir: str = None,
+    output: str = None
+) -> Future:
     """
+    28 min.
     """
 
-    futures = []
+    if not outdir:
+        outdir = Path(fp).parent
 
-    ## Dask dataframes can use globs to read all the given files at once
-    #variant_fp = Path(globe._dir_hg38_variant_raw, '*.vcf')
-    variant_fp = Path(globe._dir_hg38_variant_raw, 'chromosome-2.vcf')
+    if not output:
+        output = Path(outdir, Path(Path(fp).stem).with_suffix('.tsv')).as_posix()
 
-    raw_df = read_gvf_file(variant_fp)
+    ## Read the GVF file and annotate header fields
+    raw_df = read_gvf_file(fp)
+
+    ## Completely process the given GVF file into a format suitable for our needs
     processed_df = process_gvf(raw_df)
 
     ## Persist the processed data form on the workers
     processed_df = client.persist(processed_df)
 
-    ## Now separate and store processed variant by chromosome
-    for chrom in globe._var_human_chromosomes:
-    #for chrom in [2]:
+    ## Scatter the lazy df to the workers otherwise dask complains
+    processed_df = client.scatter(processed_df, broadcast=True)
 
-        ## Final output filepath
-        output = Path(globe._dir_hg38_variant_proc, f'chromosome-{chrom}.tsv')
+    ## Save the distributed dataframe to a temp folder
+    saved_fp = client.submit(save_distributed_variants, processed_df)
 
-        #filtered_df = client.submit(isolate_chromosome_variants, processed_df, chrom)
+    ## Consolidate individual DF partitions from the temp folder into a single, final
+    ## processed dataset
+    consolidated = client.submit(consolidate_saved_variants, saved_fp, output)
 
-        filtered_df = isolate_chromosome_variants(processed_df, chrom)
-
-        #filtered_df = isolate_chromosome_variants(processed_df, chrom)
-        filtered_df = client.scatter(filtered_df, broadcast=True)
-
-        #processed_df = client.scatter(processed_df, broadcast=True)
-        #filtered_df = client.submit(isolate_chromosome_variants, processed_df, chrom)
-
-        #print(filtered_df.result().head())
-        #print(filtered_df.head())
-        saved_fp = client.submit(save_distributed_variants, filtered_df)
-        consolidated = client.submit(consolidate_saved_variants, saved_fp, output)
-        """
-        """
-
-        futures.append(consolidated)
-        #break
-
-    return futures
+    return consolidated
 
 
-def run_hg38_variant_processing2(client: Client) -> Future:
+def run_hg38_variant_processing(
+    client: Client,
+    indir: str = globe._dir_hg38_variant_raw,
+    outdir: str = globe._dir_hg38_variant_proc
+) -> Future:
     """
     28 min.
     """
 
     futures = []
 
-
-    ## Now separate and store processed variant by chromosome
     for chrom in globe._var_human_chromosomes:
-    #for chrom in ['1']:
 
-        ## Dask dataframes can use globs to read all the given files at once
-        variant_fp = Path(globe._dir_hg38_variant_raw, f'chromosome-{chrom}.vcf')
-        #variant_fp = Path(globe._dir_hg38_variant_raw, 'chromosome-1.vcf')
+        variant_fp = Path(indir, f'chromosome-{chrom}.gvf')
 
-        raw_df = read_gvf_file(variant_fp)
-        processed_df = process_gvf(raw_df)
+        future = process_variants(client, variant_fp, outdir)
 
-        ## Persist the processed data form on the workers
-        processed_df = client.persist(processed_df)
-
-        ## Final output filepath
-        output = Path(globe._dir_hg38_variant_proc, f'chromosome-{chrom}.tsv')
-
-        #filtered_df = client.submit(isolate_chromosome_variants, processed_df, chrom)
-
-        log._logger.info(f'Starting work on chromosome {chrom}')
-        #filtered_df = isolate_chromosome_variants(processed_df, chrom)
-
-        ## 1
-        #filtered_df = client.scatter(filtered_df, broadcast=True)
-        filtered_df = client.scatter(processed_df, broadcast=True)
-        saved_fp = client.submit(save_distributed_variants, filtered_df)
-        consolidated = client.submit(consolidate_saved_variants, saved_fp, output)
-
-        ## 2
-        #saved_future = save_distributed_variants2(client, filtered_df, output)
-        #futures.append(saved_future)
-
-        ## 3
-        #filtered_df = client.scatter(filtered_df, broadcast=True)
-        #saved_fp = client.submit(save_distributed_variants3, filtered_df)
-        #saved_fp = client.submit(
-        #    save_distributed_variants3, client.scatter(filtered_df.to_delayed())
-        #)
-        #consolidated = client.submit(consolidate_saved_variants, saved_fp, output)
-
-        futures.append(consolidated)
-
-        #saved_df = save_distributed_variants2(client, filtered_df, output)
-        #futures.append(saved_df)
-        #futures.append(filtered_df)
-
-        """
-        #filtered_df = isolate_chromosome_variants(processed_df, chrom)
-        #filtered_df = client.scatter(filtered_df, broadcast=True)
-
-        #processed_df = client.scatter(processed_df, broadcast=True)
-        #filtered_df = client.submit(isolate_chromosome_variants, processed_df, chrom)
-
-        #print(filtered_df.result().head())
-        #print(filtered_df.head())
-        saved_fp = client.submit(save_distributed_variants, filtered_df)
-        """
-
-        #break
+        futures.append(future)
 
     return futures
 
 
-def run_hg38_variant_processing3(client: Client) -> Future:
+def run_mm10_variant_processing(
+    client: Client,
+    input: str = globe._fp_mm10_variant_raw,
+    output: str = globe._fp_mm10_variant_processed
+) -> Future:
     """
+    28 min.
     """
 
-    futures = []
-
-    ## Dask dataframes can use globs to read all the given files at once
-    #variant_fp = Path(globe._dir_hg38_variant_raw, '*.vcf')
-    variant_fp = Path(globe._dir_hg38_variant_raw, 'chromosome-2.vcf')
-
-    raw_df = read_gvf_file(variant_fp)
-    processed_df = process_gvf(raw_df)
-
-    ## Persist the processed data form on the workers
-    processed_df = client.persist(processed_df)
-
-    ## Now separate and store processed variant by chromosome
-    #for chrom in globe._var_human_chromosomes:
-    for chrom in [2]:
-
-        ## Final output filepath
-        output = Path(globe._dir_hg38_variant_proc, f'chromosome-{chrom}.tsv')
-
-        #filtered_df = client.submit(isolate_chromosome_variants, processed_df, chrom)
-
-        filtered_df = isolate_chromosome_variants(processed_df, chrom)
-
-        df_delayed = filtered_df.to_delayed()
-        df_futures = client.compute(df_delayed)
-        saved_df = client.submit(save_distributed_variants3, df_futures)
-        #saved_df = save_distributed_variants3(client, filtered_df, output)
-
-        futures.append(saved_df)
-        #break
-
-    return futures
+    return process_variants(client, input, output=output)
 
 
 if __name__ == '__main__':
 
     log._initialize_logging(verbose=True)
 
-    #client = Client(LocalCluster(
-    #    n_workers=12,
-    #    processes=True
-    #))
-    cluster = PBSCluster(
-        name='variant-etl',
-        queue='batch',
-        interface='ib0',
-        #cores=2,
-        #processes=2,
-        #memory='80GB',
-        cores=1,
-        processes=1,
-        memory='45GB',
-        walltime='02:00:00',
-        job_extra=['-e logs', '-o logs'],
-        env_extra=['cd $PBS_O_WORKDIR']
-    )
+    client = Client(LocalCluster(
+        n_workers=18,
+        processes=True
+    ))
+    #cluster = PBSCluster(
+    #    name='variant-etl',
+    #    queue='batch',
+    #    interface='ib0',
+    #    #cores=2,
+    #    #processes=2,
+    #    #memory='80GB',
+    #    cores=1,
+    #    processes=1,
+    #    memory='45GB',
+    #    walltime='02:00:00',
+    #    job_extra=['-e logs', '-o logs'],
+    #    env_extra=['cd $PBS_O_WORKDIR']
+    #)
 
-    cluster.adapt(minimum=10, maximum=38)
+    #cluster.adapt(minimum=10, maximum=38)
 
-    client = Client(cluster)
-    """
-    """
+    #client = Client(cluster)
 
     init_logging_partial = partial(log._initialize_logging, verbose=True)
 
@@ -556,7 +474,12 @@ if __name__ == '__main__':
     ## Init logging on each worker
     #client.run(log._initialize_logging, verbose=True)
 
-    hg38_futures = run_hg38_variant_processing2(client)
+    mm10_futures = run_mm10_variant_processing(client)
+
+    client.gather(mm10_futures)
+
+    #hg38_futures = run_hg38_variant_processing2(client)
+    #client.gather(hg38_futures)
     #hg38_futures = run_hg38_variant_processing3(client)
     #df = read_gvf_file('data/variant/hg38/raw/chromosome-21.vcf')
     #df = process_gvf(df)
@@ -568,7 +491,6 @@ if __name__ == '__main__':
     #log._logger.info('Consolidating variants')
 
     #consolidate_saved_variants(tempdir, 'data/variant/hg38/processed/chromosome-21.vcf')
-    client.gather(hg38_futures)
 
     log._logger.info('Done')
     #human_futures = run_human_feature_processing(client)
