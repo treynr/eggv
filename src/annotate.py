@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-## file: process.py
-## desc: Functions for processing and formatting Ensembl variation and gene builds.
+## file: annotate.py
+## desc: Functions for annotating gene variants based on the variant effects provided
+##       by Ensembl.
 
 from dask.distributed import Client
 from dask.distributed import Future
@@ -25,233 +26,54 @@ from . import log
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 
-def read_gvf_file(fp: str) -> ddf.DataFrame:
+def read_processed_variants(fp: str) -> ddf.DataFrame:
     """
-    Read a GVF file into a Dask dataframe.
-    GVF format specifications can be found here:
-    https://github.com/The-Sequence-Ontology/Specifications/blob/master/gvf.md
+    Read and parse a pre-processed file containing Ensembl variation build data. Should
+    be in the format created by the process.py module.
 
-    arguments
-        fp: filepath to the GVF file
-
-    returns
-        a dask dataframe
+    :param fp:
+    :return:
     """
 
-    ## Header fields for the GVF file
-    header = [
-        'seqid',
-        'source',
-        'type',
-        'start',
-        'end',
-        'score',
-        'strand',
-        'phase',
-        'attr'
-    ]
+    #header = [
+    #    'chromosome', 'rsid', 'start', 'end', 'observed', 'maf', 'effect', 'transcript'
+    #]
 
-    return ddf.read_csv(fp, sep='\t', comment='#', header=None, names=header)
+    return ddf.read_csv(fp, sep='\t', comment='#')
 
 
-def read_gtf_file(fp: str) -> ddf.DataFrame:
+def read_processed_genes(fp: str) -> ddf.DataFrame:
     """
-    Read a GTF file into a Dask dataframe.
-    GTF format specifications can be found here:
-    https://useast.ensembl.org/info/website/upload/gff.html
+    Read and parse a pre-processed file containing Ensembl gene build data. Should
+    be in the format created by the process.py module.
 
-    arguments
-        fp: filepath to the GTF file
-
-    returns
-        a dask dataframe
+    :param fp:
+    :return:
     """
 
-    ## Header fields for the GFF file
-    header = [
-        'seqname',
-        'source',
-        'feature',
-        'start',
-        'end',
-        'score',
-        'strand',
-        'frame',
-        'attr'
-    ]
+    #header = [
+    #    'chromosome', 'rsid', 'start', 'end', 'observed', 'maf', 'effect', 'transcript'
+    #]
 
-    return ddf.read_csv(fp, sep='\t', comment='#', header=None, names=header)
+    return ddf.read_csv(fp, sep='\t', comment='#')
 
 
-def process_gvf(df: ddf.DataFrame) -> ddf.DataFrame:
+def annotate_variants(vdf, gdf) -> ddf.DataFrame:
     """
-    Process and format GVF fields into an intermediate data representation.
-    Filters out fields that are not necessary (for our purposes), extracts variant and
-    reference alleles, extracts the MAF, parses out variant effects and adds new rows
-    for each effect + transcript.
+    Annotate variants to genes based on variant effects provided by Ensembl.
 
+    :param vdf:
+    :param gdf:
+    :return:
     """
 
-    ## Only keep fields we need
-    df = df[['seqid', 'start', 'end', 'attr']]
-
-    ## Rename to chromosome
-    df = df.rename(columns={'seqid': 'chromosome'})
-
-    ## Add the 'chr' prefix since that's usually pretty standard
-    df['chromosome'] = 'chr' + df.chromosome.astype(str)
-
-    ## Attempt to parse out a refSNP identifier from the attributes column
-    df['rsid'] = df.attr.str.extract(r'Dbxref=dbSNP_\d+:(rs\d+)', expand=False)
-
-    ## Drop anything that doesn't have a refSNP
-    df = df.dropna(subset=['rsid'])
-
-    ## Attempt to parse out reference and variant alleles
-    df['var_allele'] = df.attr.str.extract(r'Variant_seq=([-,ACGT]+)', expand=False)
-    df['ref_allele'] = df.attr.str.extract(r'Reference_seq=([-,ACGT]+)', expand=False)
-
-    ## Just in case
-    df['var_allele'] = df.var_allele.fillna(value='-')
-    df['ref_allele'] = df.ref_allele.fillna(value='-')
-
-    ## Combine variant and reference alleles into a single observed alleles field
-    df['observed'] = df.var_allele + ',' + df.ref_allele
-
-    ## Attempt to extract the MAF
-    df['maf'] = df.attr.str.extract(
-        r'global_minor_allele_frequency=\d+\|([.0-9]+)', expand=False
-    )
-
-    ## Most things don't have a MAF
-    df['maf'] = df.maf.fillna(value=0.0)
-
-    ## Attempt to extract the variant effect, of which there may be several. The variant
-    ## effect attribute looks something like this:
-    ## Variant_effect=non_coding_transcript_variant 0 ncRNA ENST00000566940,
-    ## intron_variant 0 primary_transcript ENST00000566940,
-    ## non_coding_transcript_variant 1 ncRNA ENST00000566940,
-    df['veffect'] = df.attr.str.extract(r'Variant_effect=(.+?);', expand=False)
-
-    ## Each variant can have multiple effects, so we split the variant effects into their
-    ## own individual rows while still retaining the original variant metadata per new row
-    df = df.map_partitions(
-        lambda d: d.drop('veffect', axis=1).join(
-            d.veffect.str.split(',', expand=True)
-                .stack()
-                .reset_index(drop=True, level=1)
-                .rename('veffect')
-        )
-    )
-
-    ## Fill in missing effects and split to separate effects/transcripts
-    df['veffect'] = df.veffect.fillna('intergenic')
-    df['veffect'] = df.veffect.str.split(' ')
-    df['effect'] = df.veffect.str.get(0)
-    ## Some transcripts will have NaN values, these are replaced by 'NA' later on
-    ## in the to_csv function
-    df['transcript'] = df.veffect.str.get(3)
-
-    ## Not all variants produce transcript effects
-    #df['effect'] = df.veffect.fillna('intergenic')
-    #df['transcript'] = df.veffect.fillna('NA')
-
-    ## Then separate out the actual effect and the gene transcript
-    ## dask 1.2.2 has a bug where split() doesn't work when expand==False.
-    ## Works in 1.2.1 though.
-    #df.loc[df.veffect.notnull(), 'transcript'] = df[df.veffect.notnull()].veffect.str.split(' ').str.get(3)
-    #print(df.veffect.head(n=100))
-    ## There's a bug with the dask split implementation so we have to do it this way
-    #df['transcript'] = df.veffect.map_partitions(lambda s: s.str.split(' ').str.get(3))
-    #df['effect'] = df.veffect.map_partitions(lambda s: s.str.split(' ').str.get(0))
-    #df['effect'] = df.veffect.str.split(' ').str.get(0)
-
-
-    #df['veffect'] = df.veffect.str.split(' ')
-    #df['effect'] = '0'
-    #df['transcript'] = '0'
-    #df['transcript'] = df.veffect.str.get(3)
-    #df['effect'] = df.veffect.str.get(0)
-    #df['transcript'] = df.veffect.str.split(' ')
-    #df['transcript'] = df.transcript.str.get(3)
-    #df['effect'] = df.veffect.str.split(' ')
-    #df['effect'] = df.effect.str.get(0)
-    ## Had to do this weird mask thing cause exceptions kept getting thrown for some
-    ## (but not all) inputs: AttributeError: 'Series' object has no attribute 'split'.
-
-    #df['transcript'] = df.veffect.mask(df.veffect.notnull(), df.veffect.split(' ').str.get(3))
-    #df['effect'] = df.veffect.mask(df.veffect.notnull(), df.veffect.split(' ').str.get(0))
-    ##df['effect'] = df.effect.str.split(' ').str.get(0)
-    #df['effect'] = df.effect.fillna('intergenic')
-    #df['transcript'] = df.transcript.fillna('NA')
-
-    df = df.reset_index(drop=True)
-
-    ## Keep only things we need
-    return df[[
-        'chromosome', 'rsid', 'start', 'end', 'observed', 'maf', 'effect', 'transcript'
-    ]]
-
-
-def process_gtf(df: ddf.DataFrame) -> pd.DataFrame:
-    """
-    Process and format GTF fields into an intermediate data representation.
-    Filters out fields that are not necessary (for our purposes), extracts variant and
-    reference alleles, extracts the MAF, parses out variant effects and adds new rows
-    for each effect + transcript.
-
-    arguments
-        fp: filepath to the Ensembl gene build in GTF format.
-
-    returns
-        a pandas dataframe
-    """
-
-    ## Remove anything that isn't a transcript feature, since we'll be using transcripts
-    ## to annotate variants with the genes they're associated with
-    df = df[df.feature == 'transcript']
-
-    ## Attempt to extract the Ensembl gene ID from the attribute list
-    df['gene_id'] = df.attr.str.extract(r'gene_id "(ENS[A-Z]*\d+)"', expand=False)
-
-    ## Attempt to extract the Ensembl transcript ID from the attribute list
-    df['transcript_id'] = df.attr.str.extract(r'transcript_id "(ENST\d+)"', expand=False)
-
-    ## Attempt to extract the gene biotype from the attributes
-    df['biotype'] = df.attr.str.extract(r'biotype "(\w+)"', expand=False)
-    df['biotype'] = df.gene_name.fillna('NA')
-
-    ## Attempt to extract the gene name from the attributes
-    df['gene_name'] = df.attr.str.extract(r'gene_name "(\w+)"', expand=False)
-    df['gene_name'] = df.gene_name.fillna('NA')
-
-    ## Remove rows that don't have identifiers
-    df = df.dropna(subset=['gene_id', 'transcript_id'])
-
-    ## Only keep relevant rows
-    df = df[[
-        'seqname', 'start', 'end', 'transcript_id', 'gene_id', 'gene_name', 'biotype'
-    ]]
+    ## Merge variant and gene frames based on the Ensembl transcript ID
+    df = vdf.merge(gdf, how='inner', left_on='transcript', right_on='transcript_id')
 
     ## Rename some columns
-    df = df.rename(columns={'seqname': 'chromosome'})
+    df = df.rename(columns={'effect': 'variant_effect', 'biotype': 'gene_biotype'})
 
-    ## These aren't floats pandas, no matter what you think
-    df['start'] = df.start.astype('int')
-    df['end'] = df.end.astype('int')
-
-    ## Add 'chr' to the beginning of the chromosome number for uniformity
-    df['chromosome'] = 'chr' + df.chromosome.astype('str')
-
-    return df
-
-
-def isolate_chromosome_variants(df: ddf.DataFrame, chrom: str) -> ddf.DataFrame:
-    """
-    Filter variants specific to a single chromosome.
-    """
-
-    return df[df.chromosome == f'chr{chrom}']
+    return df[['rsid', 'gene_id', 'gene_name', 'variant_effect', 'gene_biotype']]
 
 
 def save_distributed_variants(df: ddf.DataFrame) -> str:
@@ -383,7 +205,7 @@ def run_hg38_variant_processing(client: Client) -> Future:
 
     ## Now separate and store processed variant by chromosome
     for chrom in globe._var_human_chromosomes:
-    #for chrom in [2]:
+        #for chrom in [2]:
 
         ## Final output filepath
         output = Path(globe._dir_hg38_variant_proc, f'chromosome-{chrom}.tsv')
@@ -421,7 +243,7 @@ def run_hg38_variant_processing2(client: Client) -> Future:
 
     ## Now separate and store processed variant by chromosome
     for chrom in globe._var_human_chromosomes:
-    #for chrom in ['1']:
+        #for chrom in ['1']:
 
         ## Dask dataframes can use globs to read all the given files at once
         variant_fp = Path(globe._dir_hg38_variant_raw, f'chromosome-{chrom}.vcf')

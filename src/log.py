@@ -27,5 +27,5 @@ def _initialize_logging(verbose=False):
     ## Usually get lots of warnings from these dask modules. If you find the ETL pipeline
     ## failing and throwing exceptions, uncomment these for (hopefully) insights. Usually
     ## the pipeline fails due to memory issues.
-    #logging.getLogger('distributed.utils_perf').setLevel(logging.ERROR)
+    logging.getLogger('distributed.utils_perf').setLevel(logging.ERROR)
 

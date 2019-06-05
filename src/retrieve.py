@@ -131,7 +131,7 @@ def download_hg38_variant_build(
     url = url.format(chrom)
 
     ## Create the full output filepath
-    output = Path(output, f'chromosome-{chrom}.vcf.gz').as_posix()
+    output = Path(output, f'chromosome-{chrom}.gvf.gz').as_posix()
 
     _download_ensembl_build(url, output, force)
 
