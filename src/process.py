@@ -257,7 +257,7 @@ def isolate_chromosome_variants(df: ddf.DataFrame, chrom: str) -> ddf.DataFrame:
     return df[df.chromosome == f'chr{chrom}']
 
 
-def save_distributed_variants(df: ddf.DataFrame) -> str:
+def save_distributed_dataframe(df: ddf.DataFrame) -> str:
     """
     Write variants to a file. Assumes these variants have been distributed using dask
     dataframes. Writes each dataframe partition to a temp folder.
@@ -332,7 +332,7 @@ def save_distributed_variants3(dfs) -> str:
     #return last_future
 
 
-def consolidate_saved_variants(input: str, output: str):
+def consolidate_saved_variants(input: str, output: str) -> str:
     """
     Read variant files separated due to dask dataframe partitions and concatenate them
     into a single file.
@@ -365,7 +365,7 @@ def consolidate_saved_variants(input: str, output: str):
     ## Assume the input directory is a temp one and remove it since it's no longer needed
     shutil.rmtree(input)
 
-    return True
+    return output
 
 
 def process_variants(
@@ -397,7 +397,38 @@ def process_variants(
     processed_df = client.scatter(processed_df, broadcast=True)
 
     ## Save the distributed dataframe to a temp folder
-    saved_fp = client.submit(save_distributed_variants, processed_df)
+    saved_fp = client.submit(save_distributed_dataframe, processed_df)
+
+    ## Consolidate individual DF partitions from the temp folder into a single, final
+    ## processed dataset
+    consolidated = client.submit(consolidate_saved_variants, saved_fp, output)
+
+    return consolidated
+
+
+def process_genes(
+    client: Client,
+    input: str,
+    output: str
+) -> Future:
+    """
+    28 min.
+    """
+
+    ## Read the GTF file and annotate header fields
+    raw_df = read_gtf_file(input)
+
+    ## Completely process the given GTF file into a format suitable for our needs
+    processed_df = process_gtf(raw_df)
+
+    ## Persist the processed data form on the workers
+    processed_df = client.persist(processed_df)
+
+    ## Scatter the lazy df to the workers otherwise dask complains
+    processed_df = client.scatter(processed_df, broadcast=True)
+
+    ## Save the distributed dataframe to a temp folder
+    saved_fp = client.submit(save_distributed_dataframe, processed_df)
 
     ## Consolidate individual DF partitions from the temp folder into a single, final
     ## processed dataset
@@ -432,6 +463,40 @@ def run_mm10_variant_processing(
     client: Client,
     input: str = globe._fp_mm10_variant_raw,
     output: str = globe._fp_mm10_variant_processed
+) -> Future:
+    """
+    28 min.
+    """
+
+    return process_variants(client, input, output=output)
+
+
+def run_hg38_gene_processing(
+        client: Client,
+        indir: str = globe._dir_hg38_variant_raw,
+        outdir: str = globe._dir_hg38_variant_proc
+) -> Future:
+    """
+    28 min.
+    """
+
+    futures = []
+
+    for chrom in globe._var_human_chromosomes:
+
+        variant_fp = Path(indir, f'chromosome-{chrom}.gvf')
+
+        future = process_variants(client, variant_fp, outdir)
+
+        futures.append(future)
+
+    return futures
+
+
+def run_mm10_variant_processing(
+        client: Client,
+        input: str = globe._fp_mm10_variant_raw,
+        output: str = globe._fp_mm10_variant_processed
 ) -> Future:
     """
     28 min.
