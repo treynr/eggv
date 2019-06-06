@@ -25,6 +25,10 @@ def save_distributed_dataframe(df: ddf.DataFrame, outdir: str = None) -> str:
     if not outdir:
         outdir = tf.mkdtemp(dir=globe._dir_data)
 
+    print(f'saving {outdir}')
+    print(type(df))
+    print(df.head())
+
     df.to_csv(outdir, sep='\t', index=False, na_rep='NA')
 
     return outdir

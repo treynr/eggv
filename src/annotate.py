@@ -296,7 +296,7 @@ def run_hg38_annotations(
         intergenic.append(intergenic_fp)
         #stats.append(annotation_stats)
 
-        if chrom == '4':
+        if chrom == '3':
             break
 
     ## Combine the mapping stats and save to a file
@@ -367,28 +367,28 @@ if __name__ == '__main__':
 
     log._initialize_logging(verbose=True)
 
-    client = Client(LocalCluster(
-        n_workers=18,
-        processes=True
-    ))
-    #cluster = PBSCluster(
-    #    name='variant-etl',
-    #    queue='batch',
-    #    interface='ib0',
-    #    #cores=2,
-    #    #processes=2,
-    #    #memory='80GB',
-    #    cores=1,
-    #    processes=1,
-    #    memory='45GB',
-    #    walltime='02:00:00',
-    #    job_extra=['-e logs', '-o logs'],
-    #    env_extra=['cd $PBS_O_WORKDIR']
-    #)
+    #client = Client(LocalCluster(
+    #    n_workers=18,
+    #    processes=True
+    #))
+    cluster = PBSCluster(
+        name='variant-etl',
+        queue='batch',
+        interface='ib0',
+        #cores=2,
+        #processes=2,
+        #memory='80GB',
+        cores=1,
+        processes=1,
+        memory='45GB',
+        walltime='02:00:00',
+        job_extra=['-e logs', '-o logs'],
+        env_extra=['cd $PBS_O_WORKDIR']
+    )
 
-    #cluster.adapt(minimum=10, maximum=38)
+    cluster.adapt(minimum=10, maximum=38)
 
-    #client = Client(cluster)
+    client = Client(cluster)
 
     init_logging_partial = partial(log._initialize_logging, verbose=True)
 
