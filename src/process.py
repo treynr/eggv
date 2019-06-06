@@ -6,19 +6,16 @@
 
 from dask.distributed import Client
 from dask.distributed import Future
-from dask.distributed import get_client
-from dask.distributed import secede
 from dask.distributed import LocalCluster
 from dask_jobqueue import PBSCluster
 from functools import partial
 from pathlib import Path
-from typing import Dict
+from typing import List
 import dask.dataframe as ddf
 import logging
 import pandas as pd
-import shutil
-import tempfile as tf
 
+from . import dfio
 from . import globe
 from . import log
 
@@ -83,7 +80,9 @@ def read_gtf_file(fp: str) -> ddf.DataFrame:
         'attr'
     ]
 
-    return ddf.read_csv(fp, sep='\t', comment='#', header=None, names=header)
+    return ddf.read_csv(
+        fp, sep='\t', comment='#', header=None, names=header, dtype={'seqname': 'object'}
+    )
 
 
 def process_gvf(df: ddf.DataFrame) -> ddf.DataFrame:
@@ -218,11 +217,11 @@ def process_gtf(df: ddf.DataFrame) -> pd.DataFrame:
     df['gene_id'] = df.attr.str.extract(r'gene_id "(ENS[A-Z]*\d+)"', expand=False)
 
     ## Attempt to extract the Ensembl transcript ID from the attribute list
-    df['transcript_id'] = df.attr.str.extract(r'transcript_id "(ENST\d+)"', expand=False)
+    df['transcript_id'] = df.attr.str.extract(r'transcript_id "(ENS[A-Z]*\d+)"', expand=False)
 
     ## Attempt to extract the gene biotype from the attributes
     df['biotype'] = df.attr.str.extract(r'biotype "(\w+)"', expand=False)
-    df['biotype'] = df.gene_name.fillna('NA')
+    df['biotype'] = df.biotype.fillna('NA')
 
     ## Attempt to extract the gene name from the attributes
     df['gene_name'] = df.attr.str.extract(r'gene_name "(\w+)"', expand=False)
@@ -247,125 +246,6 @@ def process_gtf(df: ddf.DataFrame) -> pd.DataFrame:
     df['chromosome'] = 'chr' + df.chromosome.astype('str')
 
     return df
-
-
-def isolate_chromosome_variants(df: ddf.DataFrame, chrom: str) -> ddf.DataFrame:
-    """
-    Filter variants specific to a single chromosome.
-    """
-
-    return df[df.chromosome == f'chr{chrom}']
-
-
-def save_distributed_dataframe(df: ddf.DataFrame) -> str:
-    """
-    Write variants to a file. Assumes these variants have been distributed using dask
-    dataframes. Writes each dataframe partition to a temp folder.
-    """
-
-    temp = tf.mkdtemp(dir=globe._dir_data)
-
-    df.to_csv(temp, sep='\t', index=False, na_rep='NA')
-
-    return temp
-
-
-def write_dataframe(df, output, append=False, **kwargs):
-
-    if append:
-        df.to_csv(output, sep='\t', index=False, header=False, mode='a')
-    else:
-        df.compute().to_csv(output, sep='\t', index=False)
-
-    return True
-
-
-def save_distributed_variants2(client: Client, df: ddf.DataFrame, output: str) -> str:
-    """
-    """
-
-    ## Convert the distributed dataframe into delayed objects, per partition
-    delayed_df = df.to_delayed()
-
-    ## Convert to a list of futures
-    df_futures = client.compute(delayed_df)
-    last_future = None
-
-    for fut in df_futures:
-        if last_future:
-            last_future = client.submit(
-                write_dataframe, fut, output, append=True, depends=last_future
-            )
-        else:
-            last_future = client.submit(write_dataframe, fut, output)
-
-    return last_future
-
-
-def save_distributed_variants3(dfs) -> str:
-    """
-    """
-
-    client = get_client()
-    ## Convert the distributed dataframe into delayed objects, per partition
-    #delayed_df = dfs.to_delayed()
-
-    ## Convert to a list of futures
-    #df_futures = client.compute(delayed_df)
-    #df_futures = client.compute(dfs)
-    temp = tf.mkdtemp(dir=globe._dir_data)
-    futures = []
-
-    #for i, fut in enumerate(df_futures):
-    for i, fut in enumerate(dfs):
-        #def write_dataframe(df, output, append=False, **kwargs):
-        #print('getting result')
-        #print(fut.result())
-        output = Path(temp, f'{i}.tsv')
-        futures.append(client.submit(write_dataframe, fut, output))
-
-    secede()
-
-    client.gather(futures)
-
-    return temp
-    #return last_future
-
-
-def consolidate_saved_variants(input: str, output: str) -> str:
-    """
-    Read variant files separated due to dask dataframe partitions and concatenate them
-    into a single file.
-
-    :param input:
-    :param output:
-    :return:
-    """
-
-    log._logger.info(f'Finalizing {output}')
-
-    first = True
-
-    with open(output, 'w') as ofl:
-        for ifp in Path(input).iterdir():
-            with open(ifp, 'r') as ifl:
-
-                ## If this is the first file being read then we include the header
-                if first:
-                    ofl.write(ifl.read())
-
-                    first = False
-
-                ## Otherwise skip the header so it isn't repeated throughout
-                else:
-                    next(ifl)
-
-                    ofl.write(ifl.read())
-
-    ## Assume the input directory is a temp one and remove it since it's no longer needed
-    shutil.rmtree(input)
-
-    return output
 
 
 def process_variants(
@@ -397,11 +277,11 @@ def process_variants(
     processed_df = client.scatter(processed_df, broadcast=True)
 
     ## Save the distributed dataframe to a temp folder
-    saved_fp = client.submit(save_distributed_dataframe, processed_df)
+    saved_fp = client.submit(dfio.save_distributed_dataframe, processed_df)
 
     ## Consolidate individual DF partitions from the temp folder into a single, final
     ## processed dataset
-    consolidated = client.submit(consolidate_saved_variants, saved_fp, output)
+    consolidated = client.submit(dfio.consolidate_separate_partitions, saved_fp, output)
 
     return consolidated
 
@@ -428,11 +308,11 @@ def process_genes(
     processed_df = client.scatter(processed_df, broadcast=True)
 
     ## Save the distributed dataframe to a temp folder
-    saved_fp = client.submit(save_distributed_dataframe, processed_df)
+    saved_fp = client.submit(dfio.save_distributed_dataframe, processed_df)
 
     ## Consolidate individual DF partitions from the temp folder into a single, final
     ## processed dataset
-    consolidated = client.submit(consolidate_saved_variants, saved_fp, output)
+    consolidated = client.submit(dfio.consolidate_separate_partitions, saved_fp, output)
 
     return consolidated
 
@@ -472,37 +352,27 @@ def run_mm10_variant_processing(
 
 
 def run_hg38_gene_processing(
-        client: Client,
-        indir: str = globe._dir_hg38_variant_raw,
-        outdir: str = globe._dir_hg38_variant_proc
+    client: Client,
+    input: str = globe._fp_hg38_gene_raw,
+    output: str = globe._fp_hg38_gene_processed,
 ) -> Future:
     """
     28 min.
     """
 
-    futures = []
-
-    for chrom in globe._var_human_chromosomes:
-
-        variant_fp = Path(indir, f'chromosome-{chrom}.gvf')
-
-        future = process_variants(client, variant_fp, outdir)
-
-        futures.append(future)
-
-    return futures
+    return process_genes(client, input, output)
 
 
-def run_mm10_variant_processing(
-        client: Client,
-        input: str = globe._fp_mm10_variant_raw,
-        output: str = globe._fp_mm10_variant_processed
+def run_mm10_gene_processing(
+    client: Client,
+    input: str = globe._fp_mm10_gene_raw,
+    output: str = globe._fp_mm10_gene_processed
 ) -> Future:
     """
     28 min.
     """
 
-    return process_variants(client, input, output=output)
+    return process_genes(client, input, output=output)
 
 
 if __name__ == '__main__':
@@ -539,9 +409,15 @@ if __name__ == '__main__':
     ## Init logging on each worker
     #client.run(log._initialize_logging, verbose=True)
 
-    mm10_futures = run_mm10_variant_processing(client)
+    #mm10_variants = run_mm10_variant_processing(client)
+    #mm10_genes = run_mm10_gene_processing(client)
 
-    client.gather(mm10_futures)
+    #hg38_variants = run_hg38_variant_processing(client)
+    hg38_genes = run_hg38_gene_processing(client)
+
+    #client.gather(mm10_variants)
+    #client.gather(mm10_genes)
+    client.gather(hg38_genes)
 
     #hg38_futures = run_hg38_variant_processing2(client)
     #client.gather(hg38_futures)

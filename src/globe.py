@@ -47,19 +47,33 @@ _dir_hg38_gene_proc = Path(_dir_data, 'gene/hg38/processed').as_posix()
 _dir_mm10_gene_raw = Path(_dir_data, 'gene/mm10/raw').as_posix()
 _dir_mm10_gene_proc = Path(_dir_data, 'gene/mm10/processed').as_posix()
 
+## Annotated variant datasets
+_dir_hg38_annotated = Path(_dir_data, 'annotated/hg38').as_posix()
+_dir_mm10_annotated = Path(_dir_data, 'annotated/mm10').as_posix()
+
 
 ## Output files ##
 
 _fp_hg38_gene_compressed = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf.gz')
-_fp_hg38_gene = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf')
+_fp_hg38_gene_raw = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf')
+_fp_hg38_gene_processed = Path(_dir_hg38_gene_proc, 'hg38-gene-build.gtf')
 
 _fp_mm10_gene_compressed = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf.gz')
-_fp_mm10_gene = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf')
+_fp_mm10_gene_raw = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf')
+_fp_mm10_gene_processed = Path(_dir_mm10_gene_proc, 'mm10-gene-build.gtf')
 
 _fp_mm10_variant_compressed = Path(_dir_mm10_variant_raw, 'mm10-variant-build.gvf.gz')
 _fp_mm10_variant_raw = Path(_dir_mm10_variant_raw, 'mm10-variant-build.gvf')
 _fp_mm10_variant_processed = Path(_dir_mm10_variant_proc, 'mm10-variant-build.tsv')
 
+#_fp_hg38_annotated = Path(_dir_hg38_annotated, 'hg38-annotated-variants.tsv')
+#_fp_hg38_intergenic = Path(_dir_hg38_annotated, 'hg38-intergenic-variants.tsv')
+
+_fp_mm10_annotated = Path(_dir_mm10_annotated, 'mm10-annotated-variants.tsv')
+_fp_mm10_intergenic = Path(_dir_mm10_annotated, 'mm10-intergenic-variants.tsv')
+
+_fp_hg38_annotation_stats = Path(_dir_data, 'hg38-annotation-stats.tsv')
+_fp_mm10_annotation_stats = Path(_dir_data, 'mm10-annotation-stats.tsv')
 
 ## In case these don't exist
 try:
@@ -71,6 +85,8 @@ try:
     Path(_dir_hg38_gene_proc).mkdir(parents=True, exist_ok=True)
     Path(_dir_mm10_gene_raw).mkdir(parents=True, exist_ok=True)
     Path(_dir_mm10_gene_proc).mkdir(parents=True, exist_ok=True)
+    Path(_dir_hg38_annotated).mkdir(parents=True, exist_ok=True)
+    Path(_dir_mm10_annotated).mkdir(parents=True, exist_ok=True)
 
 except OSError as e:
     logging.getLogger(__name__).error('Could not make data directories: %s', e)
