@@ -87,7 +87,7 @@ def annotate_variants(vdf, gdf) -> ddf.DataFrame:
         'chromosome_l': 'chromosome'
     })
 
-    ## Eliminate possible duplicates
+    ## Eliminate possible duplicates (bug in dask, this doesn't seem to work)
     df = df.drop_duplicates(subset=['rsid', 'variant_effect', 'gene_id'], keep='first')
 
     return df[[
@@ -141,6 +141,7 @@ def combine_stats(dfs: List[Future]) -> pd.DataFrame:
 
     return pd.concat(dfs, axis=0, sort=True)
 
+
 def write_intergenic_variants(df) -> str:
     """
     :param df:
@@ -179,6 +180,8 @@ def write_annotation_stats(df, output) -> str:
 
     df.to_csv(output, sep='\t')
 
+    return output
+
 
 def collect_annotation_stats(df) -> ddf.DataFrame:
     """
@@ -198,6 +201,7 @@ def collect_annotation_stats(df) -> ddf.DataFrame:
         df[is_not_intergenic & is_mapped].groupby('chromosome')
             .count()
             .loc[:, 'rsid']
+            .drop_duplicates()
             .compute()
     )
 
@@ -206,6 +210,7 @@ def collect_annotation_stats(df) -> ddf.DataFrame:
         df[is_not_intergenic & is_not_mapped].groupby('chromosome')
             .count()
             .loc[:, 'rsid']
+            .drop_duplicates()
             .compute()
     )
 
@@ -214,6 +219,7 @@ def collect_annotation_stats(df) -> ddf.DataFrame:
         df[is_intergenic].groupby('chromosome')
             .count()
             .loc[:, 'rsid']
+            .drop_duplicates()
             .compute()
     )
 
@@ -252,7 +258,10 @@ def run_hg38_annotations(
     intergenic = []
     stats = []
 
-    for chrom in globe._var_human_chromosomes:
+    #for chrom in globe._var_human_chromosomes:
+    #for chrom in ['19', '20', '21', '22']:
+    #for chrom in ['4']:
+    for chrom in ['1', '2', '3', '4']:
 
         log._logger.info(f'Starting chromosome {chrom} work')
 
@@ -265,9 +274,9 @@ def run_hg38_annotations(
         adf = annotate_variants(vdf, gdf)
 
         ## Persist and start computation for the annotated dataset
-        adf = client.persist(adf)
         ndf = client.persist(isolate_annotated_variants(adf))
         idf = client.persist(isolate_intergenic_variants(adf))
+        adf = client.persist(adf)
 
         ## Scatter the lazy frames to the workers otherwise dask bitches and dies when
         ## we use submit them to workers for processing
@@ -280,6 +289,8 @@ def run_hg38_annotations(
         #intergenic_tmp = client.submit(write_intergenic_variants, sc_adf)
         annotated_tmp = client.submit(dfio.save_distributed_dataframe, sc_ndf)
         intergenic_tmp = client.submit(dfio.save_distributed_dataframe, sc_idf)
+        #annotated_tmp = client.submit(dfio.save_distributed_dataframe, ndf)
+        #intergenic_tmp = client.submit(dfio.save_distributed_dataframe, idf)
 
         ## Consolidate distributed datasets
         annotated_fp = client.submit(
@@ -290,23 +301,24 @@ def run_hg38_annotations(
         )
 
         ## Get mapping stats
-        #annotation_stats = client.submit(collect_annotation_stats, sc_adf)
+        annotation_stats = client.submit(collect_annotation_stats, sc_adf)
 
         annotated.append(annotated_fp)
         intergenic.append(intergenic_fp)
-        #stats.append(annotation_stats)
+        stats.append(annotation_stats)
 
-        if chrom == '3':
-            break
+        #if chrom == '2':
+        #    break
 
     ## Combine the mapping stats and save to a file
-    #stats = client.submit(combine_stats, stats)
-    #stats_fp = client.submit(write_annotation_stats, stats, stats_fp)
+    stats = client.submit(combine_stats, stats)
+    stats_fp = client.submit(write_annotation_stats, stats, stats_fp)
 
     return {
         'annotated': annotated,
         'intergenic': intergenic,
-        #'stats': stats_fp
+        #'stats': stats
+        'stats': stats_fp
     }
 
 

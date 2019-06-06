@@ -320,7 +320,8 @@ def process_genes(
 def run_hg38_variant_processing(
     client: Client,
     indir: str = globe._dir_hg38_variant_raw,
-    outdir: str = globe._dir_hg38_variant_proc
+    outdir: str = globe._dir_hg38_variant_proc,
+    **kwargs
 ) -> Future:
     """
     28 min.
@@ -342,7 +343,8 @@ def run_hg38_variant_processing(
 def run_mm10_variant_processing(
     client: Client,
     input: str = globe._fp_mm10_variant_raw,
-    output: str = globe._fp_mm10_variant_processed
+    output: str = globe._fp_mm10_variant_processed,
+    **kwargs
 ) -> Future:
     """
     28 min.
@@ -355,6 +357,7 @@ def run_hg38_gene_processing(
     client: Client,
     input: str = globe._fp_hg38_gene_raw,
     output: str = globe._fp_hg38_gene_processed,
+    **kwargs
 ) -> Future:
     """
     28 min.
@@ -366,7 +369,8 @@ def run_hg38_gene_processing(
 def run_mm10_gene_processing(
     client: Client,
     input: str = globe._fp_mm10_gene_raw,
-    output: str = globe._fp_mm10_gene_processed
+    output: str = globe._fp_mm10_gene_processed,
+    **kwargs
 ) -> Future:
     """
     28 min.
