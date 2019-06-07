@@ -7,6 +7,8 @@
 from dask.distributed import Client
 from dask.distributed import Future
 from dask.distributed import LocalCluster
+from dask.distributed import get_client
+from dask.distributed import secede
 from dask_jobqueue import PBSCluster
 from functools import partial
 from pathlib import Path
@@ -317,6 +319,33 @@ def process_genes(
     return consolidated
 
 
+def run_hg38_single_variant_processing(
+    input: str,
+    client: Client = None,
+    outdir: str = globe._dir_hg38_variant_proc,
+    **kwargs
+) -> Future:
+    """
+    Run the variant processing pipeline on a single file (usually contains variants
+    from a single chromosome). Useful for custom pipeline steps that don't have to rely
+    on the run_hg38_variant_processing function to retrieve ALL variants.
+    Mostly just a wrapper for the process_variants function.
+    """
+
+    if not client:
+        client = get_client()
+
+    ## If this function was sent to a worker, we should secede to free up processing room
+    try:
+        secede()
+
+    except ValueError:
+        ## Not a worker
+        pass
+
+    return process_variants(client, input, outdir)
+
+
 def run_hg38_variant_processing(
     client: Client,
     indir: str = globe._dir_hg38_variant_raw,
@@ -340,6 +369,30 @@ def run_hg38_variant_processing(
     return futures
 
 
+def run_hg38_gene_processing(
+    client: Client = None,
+    input: str = globe._fp_hg38_gene_raw,
+    output: str = globe._fp_hg38_gene_processed,
+    **kwargs
+) -> Future:
+    """
+    28 min.
+    """
+
+    if not client:
+        client = get_client()
+
+    ## If this function was sent to a worker, we should secede to free up processing room
+    try:
+        secede()
+
+    except ValueError:
+        ## Not a worker
+        pass
+
+    return process_genes(client, input, output)
+
+
 def run_mm10_variant_processing(
     client: Client,
     input: str = globe._fp_mm10_variant_raw,
@@ -351,19 +404,6 @@ def run_mm10_variant_processing(
     """
 
     return process_variants(client, input, output=output)
-
-
-def run_hg38_gene_processing(
-    client: Client,
-    input: str = globe._fp_hg38_gene_raw,
-    output: str = globe._fp_hg38_gene_processed,
-    **kwargs
-) -> Future:
-    """
-    28 min.
-    """
-
-    return process_genes(client, input, output)
 
 
 def run_mm10_gene_processing(
