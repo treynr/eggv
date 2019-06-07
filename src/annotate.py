@@ -261,7 +261,8 @@ def run_hg38_annotations(
     #for chrom in globe._var_human_chromosomes:
     #for chrom in ['19', '20', '21', '22']:
     #for chrom in ['4']:
-    for chrom in ['1', '2', '3', '4']:
+    #for chrom in ['1', '2', '3', '4']:
+    for chrom in ['10', '11']:
 
         log._logger.info(f'Starting chromosome {chrom} work')
 
@@ -379,28 +380,30 @@ if __name__ == '__main__':
 
     log._initialize_logging(verbose=True)
 
-    #client = Client(LocalCluster(
-    #    n_workers=18,
-    #    processes=True
-    #))
-    cluster = PBSCluster(
-        name='variant-etl',
-        queue='batch',
-        interface='ib0',
-        #cores=2,
-        #processes=2,
-        #memory='80GB',
-        cores=1,
-        processes=1,
-        memory='45GB',
-        walltime='02:00:00',
-        job_extra=['-e logs', '-o logs'],
-        env_extra=['cd $PBS_O_WORKDIR']
-    )
+    client = Client(LocalCluster(
+        n_workers=6,
+        processes=True,
+        local_dir='/var/tmp',
+    ))
+    #cluster = PBSCluster(
+    #    name='variant-etl',
+    #    queue='batch',
+    #    interface='ib0',
+    #    #cores=2,
+    #    #processes=2,
+    #    #memory='80GB',
+    #    cores=1,
+    #    processes=1,
+    #    memory='60GB',
+    #    walltime='05:00:00',
+    #    local_directory='/var/tmp',
+    #    job_extra=['-e logs', '-o logs'],
+    #    env_extra=['cd $PBS_O_WORKDIR']
+    #)
 
-    cluster.adapt(minimum=10, maximum=38)
+    #cluster.adapt(minimum=10, maximum=45)
 
-    client = Client(cluster)
+    #client = Client(cluster)
 
     init_logging_partial = partial(log._initialize_logging, verbose=True)
 
