@@ -88,7 +88,7 @@ def annotate_variants(vdf, gdf) -> ddf.DataFrame:
     })
 
     ## Eliminate possible duplicates (bug in dask, this doesn't seem to work)
-    df = df.drop_duplicates(subset=['rsid', 'variant_effect', 'gene_id'], keep='first')
+    #df = df.drop_duplicates(subset=['rsid', 'variant_effect', 'gene_id'], keep='first')
 
     return df[[
         'chromosome',
@@ -128,7 +128,11 @@ def isolate_annotated_variants(df) -> ddf.DataFrame:
         'chromosome', 'rsid', 'variant_effect', 'gene_id', 'gene_name', 'gene_biotype'
     ]
 
-    return df[(df.variant_effect != 'intergenic') & (df.gene_id.notnull())].loc[:, keep]
+    return (
+        df[(df.variant_effect != 'intergenic') & (df.gene_id.notnull())]
+            .loc[:, keep]
+            .drop_duplicates(subset=['rsid', 'variant_effect', 'gene_id'])
+    )
 
 
 def combine_stats(dfs: List[Future]) -> pd.DataFrame:
@@ -198,28 +202,28 @@ def collect_annotation_stats(df) -> ddf.DataFrame:
 
     ## Intragenic variants successfully mapped to genes
     intra_mapped = (
-        df[is_not_intergenic & is_mapped].groupby('chromosome')
-            .count()
-            .loc[:, 'rsid']
+        df[is_not_intergenic & is_mapped].loc[:, ['chromosome', 'rsid']]
             .drop_duplicates()
+            .groupby('chromosome')
+            .count()
             .compute()
     )
 
     ## Intragenic variants that failed to map to a gene (should be few or none)
     intra_failed = (
-        df[is_not_intergenic & is_not_mapped].groupby('chromosome')
-            .count()
-            .loc[:, 'rsid']
+        df[is_not_intergenic & is_not_mapped].loc[:, ['chromosome', 'rsid']]
             .drop_duplicates()
+            .groupby('chromosome')
+            .count()
             .compute()
     )
 
     ## Intergenic variants
     intergenic = (
-        df[is_intergenic].groupby('chromosome')
-            .count()
-            .loc[:, 'rsid']
+        df[is_intergenic].loc[:, ['chromosome', 'rsid']]
             .drop_duplicates()
+            .groupby('chromosome')
+            .count()
             .compute()
     )
 
@@ -258,11 +262,11 @@ def run_hg38_annotations(
     intergenic = []
     stats = []
 
-    #for chrom in globe._var_human_chromosomes:
+    for chrom in globe._var_human_chromosomes:
     #for chrom in ['19', '20', '21', '22']:
     #for chrom in ['4']:
     #for chrom in ['1', '2', '3', '4']:
-    for chrom in ['10', '11']:
+    #for chrom in ['10', '11', '12', '13']:
 
         log._logger.info(f'Starting chromosome {chrom} work')
 
@@ -380,30 +384,31 @@ if __name__ == '__main__':
 
     log._initialize_logging(verbose=True)
 
-    client = Client(LocalCluster(
-        n_workers=6,
-        processes=True,
-        local_dir='/var/tmp',
-    ))
-    #cluster = PBSCluster(
-    #    name='variant-etl',
-    #    queue='batch',
-    #    interface='ib0',
-    #    #cores=2,
-    #    #processes=2,
-    #    #memory='80GB',
-    #    cores=1,
-    #    processes=1,
-    #    memory='60GB',
-    #    walltime='05:00:00',
-    #    local_directory='/var/tmp',
-    #    job_extra=['-e logs', '-o logs'],
-    #    env_extra=['cd $PBS_O_WORKDIR']
-    #)
+    #client = Client(LocalCluster(
+    #    n_workers=6,
+    #    processes=True,
+    #    local_dir='/var/tmp',
+    #))
+    ## Takes around 25min. to do all human chromosomes using 30 workers
+    cluster = PBSCluster(
+        name='variant-etl',
+        queue='batch',
+        interface='ib0',
+        #cores=2,
+        #processes=2,
+        #memory='80GB',
+        cores=1,
+        processes=1,
+        memory='45GB',
+        walltime='00:50:00',
+        local_directory='/var/tmp',
+        job_extra=['-e logs', '-o logs'],
+        env_extra=['cd $PBS_O_WORKDIR']
+    )
 
-    #cluster.adapt(minimum=10, maximum=45)
+    cluster.adapt(minimum=10, maximum=45)
 
-    #client = Client(cluster)
+    client = Client(cluster)
 
     init_logging_partial = partial(log._initialize_logging, verbose=True)
 

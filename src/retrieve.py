@@ -64,8 +64,6 @@ def _unzip(fp: str, output: str = None, **kwargs) -> None:
     with gzip.open(fp, 'rb') as gfl, open(output, 'wb') as ufl:
         shutil.copyfileobj(gfl, ufl)
 
-    return output
-
 
 def _download_ensembl_build(url: str, output: str, force: bool = False):
     """

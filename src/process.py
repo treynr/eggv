@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List
 import dask.dataframe as ddf
 import logging
+import numpy as np
 import pandas as pd
 
 from . import dfio
@@ -92,7 +93,7 @@ def process_gvf(df: ddf.DataFrame) -> ddf.DataFrame:
     Process and format GVF fields into an intermediate data representation.
     Filters out fields that are not necessary (for our purposes), extracts variant and
     reference alleles, extracts the MAF, parses out variant effects and adds new rows
-    for each effect + transcript.
+    for each effect + modified transcript.
 
     """
 
@@ -110,6 +111,9 @@ def process_gvf(df: ddf.DataFrame) -> ddf.DataFrame:
 
     ## Drop anything that doesn't have a refSNP
     df = df.dropna(subset=['rsid'])
+
+    ## Then strip the rs prefix and convert the refSNP ID to a 64-bit int
+    df['rsid'] = df.rsid.str.strip('rs').astype(np.int64)
 
     ## Attempt to parse out reference and variant alleles
     df['var_allele'] = df.attr.str.extract(r'Variant_seq=([-,ACGT]+)', expand=False)
@@ -197,6 +201,32 @@ def process_gvf(df: ddf.DataFrame) -> ddf.DataFrame:
     ]]
 
 
+def isolate_variant_metadata(df: ddf.DataFrame) -> ddf.DataFrame:
+    """
+    Process the intermediate variant format into one that only keeps individual
+    variant metadata.
+
+    :param df:
+    :return:
+    """
+
+    return df[['chromosome', 'rsid', 'start', 'end', 'observed', 'maf']].drop_duplicates(
+        subset=['rsid']
+    )
+
+
+def isolate_variant_effects(df: ddf.DataFrame) -> ddf.DataFrame:
+    """
+    Process the intermediate variant format into one that only keeps variant effects and
+    the transcript modifications. This is used later on to annotate genes to variants.
+
+    :param df:
+    :return:
+    """
+
+    return df[['rsid', 'effect', 'transcript']]
+
+
 def process_gtf(df: ddf.DataFrame) -> pd.DataFrame:
     """
     Process and format GTF fields into an intermediate data representation.
@@ -253,39 +283,60 @@ def process_gtf(df: ddf.DataFrame) -> pd.DataFrame:
 def process_variants(
     client: Client,
     fp: str,
-    outdir: str = None,
-    output: str = None
+    effect_dir: str = None,
+    meta_dir: str = None,
+    effect_out: str = None,
+    meta_out: str = None
 ) -> Future:
     """
     28 min.
     """
 
-    if not outdir:
-        outdir = Path(fp).parent
+    if not effect_dir:
+        effect_dir = Path(fp).parent
 
-    if not output:
-        output = Path(outdir, Path(Path(fp).stem).with_suffix('.tsv')).as_posix()
+    if not meta_dir:
+        meta_dir = Path(fp).parent
+
+    if not effect_out:
+        effect_out = Path(effect_dir, Path(Path(fp).stem).with_suffix('.tsv')).as_posix()
+
+    if not meta_out:
+        meta_out = Path(meta_dir, Path(Path(fp).stem).with_suffix('.meta.tsv')).as_posix()
 
     ## Read the GVF file and annotate header fields
     raw_df = read_gvf_file(fp)
 
-    ## Completely process the given GVF file into a format suitable for our needs
+    ## Completely process the given GVF file into an intermediate format suitable
+    ## for our needs
     processed_df = process_gvf(raw_df)
 
+    ## Isolate variant metadata and effects
+    effect_df = isolate_variant_effects(processed_df)
+    meta_df = isolate_variant_metadata(processed_df)
+
     ## Persist the processed data form on the workers
-    processed_df = client.persist(processed_df)
+    effect_df = client.persist(effect_df)
+    meta_df = client.persist(meta_df)
 
     ## Scatter the lazy df to the workers otherwise dask complains
-    processed_df = client.scatter(processed_df, broadcast=True)
+    effect_df = client.scatter(effect_df, broadcast=True)
+    meta_df = client.scatter(meta_df, broadcast=True)
 
     ## Save the distributed dataframe to a temp folder
-    saved_fp = client.submit(dfio.save_distributed_dataframe, processed_df)
+    #saved_fp = client.submit(dfio.save_distributed_dataframe, processed_df)
+    effect_fp = client.submit(dfio.save_distributed_dataframe, effect_df)
+    meta_fp = client.submit(dfio.save_distributed_dataframe, meta_df)
 
     ## Consolidate individual DF partitions from the temp folder into a single, final
     ## processed dataset
-    consolidated = client.submit(dfio.consolidate_separate_partitions, saved_fp, output)
+    #consolidated = client.submit(dfio.consolidate_separate_partitions, saved_fp, output)
+    effect_final = client.submit(
+        dfio.consolidate_separate_partitions, effect_fp, effect_out
+    )
+    meta_final = client.submit(dfio.consolidate_separate_partitions, meta_fp, meta_out)
 
-    return consolidated
+    return {'effects': effect_final, 'metadata': meta_final}
 
 
 def process_genes(
@@ -349,7 +400,8 @@ def run_hg38_single_variant_processing(
 def run_hg38_variant_processing(
     client: Client,
     indir: str = globe._dir_hg38_variant_raw,
-    outdir: str = globe._dir_hg38_variant_proc,
+    effect_dir: str = globe._dir_hg38_variant_proc,
+    meta_dir: str = globe._dir_hg38_variant_meta,
     **kwargs
 ) -> Future:
     """
@@ -362,7 +414,9 @@ def run_hg38_variant_processing(
 
         variant_fp = Path(indir, f'chromosome-{chrom}.gvf')
 
-        future = process_variants(client, variant_fp, outdir)
+        future = process_variants(
+            client, variant_fp, effect_dir=effect_dir, meta_dir=meta_dir
+        )
 
         futures.append(future)
 
@@ -396,14 +450,15 @@ def run_hg38_gene_processing(
 def run_mm10_variant_processing(
     client: Client,
     input: str = globe._fp_mm10_variant_raw,
-    output: str = globe._fp_mm10_variant_processed,
+    effect_out: str = globe._fp_mm10_variant_processed,
+    meta_out: str = globe._fp_mm10_variant_meta,
     **kwargs
 ) -> Future:
     """
     28 min.
     """
 
-    return process_variants(client, input, output=output)
+    return process_variants(client, input, effect_out=effect_out, meta_out=meta_out)
 
 
 def run_mm10_gene_processing(
@@ -423,28 +478,28 @@ if __name__ == '__main__':
 
     log._initialize_logging(verbose=True)
 
-    client = Client(LocalCluster(
-        n_workers=18,
-        processes=True
-    ))
-    #cluster = PBSCluster(
-    #    name='variant-etl',
-    #    queue='batch',
-    #    interface='ib0',
-    #    #cores=2,
-    #    #processes=2,
-    #    #memory='80GB',
-    #    cores=1,
-    #    processes=1,
-    #    memory='45GB',
-    #    walltime='02:00:00',
-    #    job_extra=['-e logs', '-o logs'],
-    #    env_extra=['cd $PBS_O_WORKDIR']
-    #)
+    #client = Client(LocalCluster(
+    #    n_workers=18,
+    #    processes=True
+    #))
+    cluster = PBSCluster(
+        name='variant-etl',
+        queue='batch',
+        interface='ib0',
+        #cores=2,
+        #processes=2,
+        #memory='80GB',
+        cores=1,
+        processes=1,
+        memory='50GB',
+        walltime='03:00:00',
+        job_extra=['-e logs', '-o logs'],
+        env_extra=['cd $PBS_O_WORKDIR']
+    )
 
-    #cluster.adapt(minimum=10, maximum=38)
+    cluster.adapt(minimum=10, maximum=45)
 
-    #client = Client(cluster)
+    client = Client(cluster)
 
     init_logging_partial = partial(log._initialize_logging, verbose=True)
 
@@ -453,15 +508,16 @@ if __name__ == '__main__':
     ## Init logging on each worker
     #client.run(log._initialize_logging, verbose=True)
 
-    #mm10_variants = run_mm10_variant_processing(client)
+    mm10_variants = run_mm10_variant_processing(client)
     #mm10_genes = run_mm10_gene_processing(client)
 
     #hg38_variants = run_hg38_variant_processing(client)
-    hg38_genes = run_hg38_gene_processing(client)
+    #hg38_genes = run_hg38_gene_processing(client)
 
-    #client.gather(mm10_variants)
+    client.gather(mm10_variants)
     #client.gather(mm10_genes)
-    client.gather(hg38_genes)
+    #client.gather(hg38_variants)
+    #client.gather(hg38_genes)
 
     #hg38_futures = run_hg38_variant_processing2(client)
     #client.gather(hg38_futures)
