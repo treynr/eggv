@@ -64,6 +64,8 @@ def _unzip(fp: str, output: str = None, **kwargs) -> None:
     with gzip.open(fp, 'rb') as gfl, open(output, 'wb') as ufl:
         shutil.copyfileobj(gfl, ufl)
 
+    return output
+
 
 def _download_ensembl_build(url: str, output: str, force: bool = False):
     """
@@ -82,9 +84,11 @@ def _download_ensembl_build(url: str, output: str, force: bool = False):
             'The Ensembl build (%s) already exists, use force=True to retrieve it', output
         )
 
-        return
+        return output
 
     _download(url, output)
+
+    return output
 
 
 def download_hg38_gene_build(
@@ -131,7 +135,7 @@ def download_hg38_variant_build(
     url = url.format(chrom)
 
     ## Create the full output filepath
-    output = Path(output, f'chromosome-{chrom}.gvf.gz').as_posix()
+    output = Path(output, f'hg38-chromosome-{chrom}.gvf.gz').as_posix()
 
     _download_ensembl_build(url, output, force)
 

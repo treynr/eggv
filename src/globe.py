@@ -32,60 +32,73 @@ _url_mm10_gene = 'http://ftp.ensembl.org/pub/release-95/gtf/mus_musculus/Mus_mus
 
 ## Output directories ##
 
-## Data directory
+## Data directories
 _dir_data = 'data/'
+_dir_stats = Path(_dir_data, 'stats').as_posix()
 
 ## Variant datasets
-_dir_hg38_variant_raw = Path(_dir_data, 'variant/hg38/raw').as_posix()
-_dir_hg38_variant_proc = Path(_dir_data, 'variant/hg38/processed').as_posix()
-_dir_hg38_variant_meta = Path(_dir_data, 'variant/hg38/meta').as_posix()
-_dir_mm10_variant_raw = Path(_dir_data, 'variant/mm10/raw').as_posix()
-_dir_mm10_variant_proc = Path(_dir_data, 'variant/mm10/processed').as_posix()
-_dir_mm10_variant_meta = Path(_dir_data, 'variant/mm10/meta').as_posix()
+_dir_variant = Path(_dir_data, 'variants').as_posix()
+
+_dir_hg38_variant = Path(_dir_variant, 'hg38').as_posix()
+_dir_hg38_variant_raw = Path(_dir_hg38_variant, 'raw').as_posix()
+_dir_hg38_variant_effect = Path(_dir_hg38_variant, 'effects').as_posix()
+_dir_hg38_variant_meta = Path(_dir_hg38_variant, 'meta').as_posix()
+
+_dir_mm10_variant = Path(_dir_variant, 'mm10').as_posix()
+_dir_mm10_variant_raw = Path(_dir_mm10_variant, 'raw').as_posix()
+_dir_mm10_variant_effect = Path(_dir_mm10_variant, 'effects').as_posix()
+_dir_mm10_variant_meta = Path(_dir_mm10_variant, 'meta').as_posix()
 
 ## Gene datasets
-_dir_hg38_gene_raw = Path(_dir_data, 'gene/hg38/raw').as_posix()
-_dir_hg38_gene_proc = Path(_dir_data, 'gene/hg38/processed').as_posix()
-_dir_hg38_gene_neo = Path(_dir_data, 'gene/hg38/neo4j').as_posix()
-_dir_mm10_gene_raw = Path(_dir_data, 'gene/mm10/raw').as_posix()
-_dir_mm10_gene_proc = Path(_dir_data, 'gene/mm10/processed').as_posix()
+_dir_gene = Path(_dir_data, 'genes').as_posix()
+
+_dir_hg38_gene = Path(_dir_gene, 'hg38').as_posix()
+_dir_hg38_gene_raw = Path(_dir_hg38_gene, 'raw').as_posix()
+_dir_hg38_gene_meta = Path(_dir_hg38_gene, 'meta').as_posix()
+
+_dir_mm10_gene = Path(_dir_gene, 'mm10').as_posix()
+_dir_mm10_gene_raw = Path(_dir_mm10_gene, 'raw').as_posix()
+_dir_mm10_gene_meta = Path(_dir_mm10_gene, 'meta').as_posix()
 
 ## Annotated variant datasets
-_dir_hg38_annotated = Path(_dir_data, 'annotated/hg38').as_posix()
-_dir_mm10_annotated = Path(_dir_data, 'annotated/mm10').as_posix()
+_dir_hg38_annotated = Path(_dir_hg38_variant, 'annotated').as_posix()
+_dir_hg38_annotated_inter = Path(_dir_hg38_annotated, 'intergenic').as_posix()
+_dir_hg38_annotated_intra = Path(_dir_hg38_annotated, 'intragenic').as_posix()
+
+_dir_mm10_annotated = Path(_dir_mm10_variant, 'annotated').as_posix()
 
 ## Neo4j formatted datasets
-_dir_hg38_neo_gene = Path(_dir_data, 'neo4j/hg38/gene').as_posix()
-_dir_hg38_neo_variant_meta = Path(_dir_data, 'neo4j/hg38/variant-meta').as_posix()
-_dir_hg38_neo_variant_rel = Path(_dir_data, 'neo4j/hg38/variant-relations').as_posix()
-_dir_mm10_neo_gene = Path(_dir_data, 'neo4j/mm10/gene').as_posix()
-_dir_mm10_neo_variant_meta = Path(_dir_data, 'neo4j/mm10/variant-meta').as_posix()
-_dir_mm10_neo_variant_rel = Path(_dir_data, 'neo4j/mm10/variant-relations').as_posix()
+_dir_hg38_neo_variant = Path(_dir_hg38_variant, 'neo4j').as_posix()
+_dir_hg38_neo_gene = Path(_dir_hg38_gene, 'neo4j').as_posix()
+_dir_hg38_neo_variant_meta = Path(_dir_hg38_neo_variant, 'meta').as_posix()
+_dir_hg38_neo_variant_rel = Path(_dir_hg38_neo_variant, 'relations').as_posix()
+
+_dir_mm10_neo_variant = Path(_dir_mm10_variant, 'neo4j').as_posix()
+_dir_mm10_neo_gene = Path(_dir_mm10_gene, 'neo4j').as_posix()
+_dir_mm10_neo_variant_meta = Path(_dir_mm10_neo_variant, 'meta').as_posix()
+_dir_mm10_neo_variant_rel = Path(_dir_mm10_neo_variant, 'relations').as_posix()
 
 
 ## Output files ##
 
 _fp_hg38_gene_compressed = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf.gz')
 _fp_hg38_gene_raw = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf')
-_fp_hg38_gene_processed = Path(_dir_hg38_gene_proc, 'hg38-gene-build.gtf')
+_fp_hg38_gene_meta = Path(_dir_hg38_gene_meta, 'hg38-gene-build.gtf')
 
 _fp_mm10_gene_compressed = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf.gz')
 _fp_mm10_gene_raw = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf')
-_fp_mm10_gene_processed = Path(_dir_mm10_gene_proc, 'mm10-gene-build.gtf')
+_fp_mm10_gene_meta = Path(_dir_mm10_gene_meta, 'mm10-gene-build.gtf')
 
 _fp_mm10_variant_compressed = Path(_dir_mm10_variant_raw, 'mm10-variant-build.gvf.gz')
 _fp_mm10_variant_raw = Path(_dir_mm10_variant_raw, 'mm10-variant-build.gvf')
-_fp_mm10_variant_processed = Path(_dir_mm10_variant_proc, 'mm10-variant-build.tsv')
+_fp_mm10_variant_effect = Path(_dir_mm10_variant_effect, 'mm10-variant-build.tsv')
 _fp_mm10_variant_meta = Path(_dir_mm10_variant_meta, 'mm10-variant-build-metadata.tsv')
-
-#_fp_hg38_annotated = Path(_dir_hg38_annotated, 'hg38-annotated-variants.tsv')
-#_fp_hg38_intergenic = Path(_dir_hg38_annotated, 'hg38-intergenic-variants.tsv')
 
 _fp_mm10_annotated = Path(_dir_mm10_annotated, 'mm10-annotated-variants.tsv')
 _fp_mm10_intergenic = Path(_dir_mm10_annotated, 'mm10-intergenic-variants.tsv')
 
-_fp_hg38_annotation_stats = Path(_dir_data, 'hg38-annotation-stats.tsv')
-_fp_mm10_annotation_stats = Path(_dir_data, 'mm10-annotation-stats.tsv')
+_fp_hg38_annotation_stats = Path(_dir_stats, 'hg38-variant-annotation-stats.tsv')
+_fp_mm10_annotation_stats = Path(_dir_stats, 'mm10-variant-annotation-stats.tsv')
 
 ## Neo4j outputs
 _fp_hg38_neo_gene = Path(_dir_hg38_neo_gene, 'hg38-gene-build.tsv')
@@ -103,17 +116,18 @@ _fp_mm10_neo_variant_rel_head = Path(_dir_mm10_neo_variant_rel, 'mm10-variant-re
 ## In case these don't exist
 try:
     Path(_dir_hg38_variant_raw).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_variant_proc).mkdir(parents=True, exist_ok=True)
+    Path(_dir_hg38_variant_effect).mkdir(parents=True, exist_ok=True)
     Path(_dir_mm10_variant_raw).mkdir(parents=True, exist_ok=True)
-    Path(_dir_mm10_variant_proc).mkdir(parents=True, exist_ok=True)
+    Path(_dir_mm10_variant_effect).mkdir(parents=True, exist_ok=True)
     Path(_dir_hg38_variant_meta).mkdir(parents=True, exist_ok=True)
     Path(_dir_mm10_variant_meta).mkdir(parents=True, exist_ok=True)
     Path(_dir_hg38_gene_raw).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_gene_proc).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_gene_neo).mkdir(parents=True, exist_ok=True)
+    Path(_dir_hg38_gene_meta).mkdir(parents=True, exist_ok=True)
     Path(_dir_mm10_gene_raw).mkdir(parents=True, exist_ok=True)
-    Path(_dir_mm10_gene_proc).mkdir(parents=True, exist_ok=True)
+    Path(_dir_mm10_gene_meta).mkdir(parents=True, exist_ok=True)
     Path(_dir_hg38_annotated).mkdir(parents=True, exist_ok=True)
+    Path(_dir_hg38_annotated_inter).mkdir(parents=True, exist_ok=True)
+    Path(_dir_hg38_annotated_intra).mkdir(parents=True, exist_ok=True)
     Path(_dir_mm10_annotated).mkdir(parents=True, exist_ok=True)
 
     Path(_dir_hg38_neo_gene).mkdir(parents=True, exist_ok=True)

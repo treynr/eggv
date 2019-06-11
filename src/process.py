@@ -12,6 +12,7 @@ from dask.distributed import secede
 from dask_jobqueue import PBSCluster
 from functools import partial
 from pathlib import Path
+from typing import Dict
 from typing import List
 import dask.dataframe as ddf
 import logging
@@ -287,7 +288,7 @@ def process_variants(
     meta_dir: str = None,
     effect_out: str = None,
     meta_out: str = None
-) -> Future:
+) -> Dict[str, Future]:
     """
     28 min.
     """
@@ -336,14 +337,11 @@ def process_variants(
     )
     meta_final = client.submit(dfio.consolidate_separate_partitions, meta_fp, meta_out)
 
+    ## Returns the filepaths to the processed effects and metadata
     return {'effects': effect_final, 'metadata': meta_final}
 
 
-def process_genes(
-    client: Client,
-    input: str,
-    output: str
-) -> Future:
+def process_genes(client: Client, input: str, output: str) -> Future:
     """
     28 min.
     """
@@ -354,7 +352,7 @@ def process_genes(
     ## Completely process the given GTF file into a format suitable for our needs
     processed_df = process_gtf(raw_df)
 
-    ## Persist the processed data form on the workers
+    ## Persist the processed dask dataframe on the workers
     processed_df = client.persist(processed_df)
 
     ## Scatter the lazy df to the workers otherwise dask complains
@@ -373,7 +371,8 @@ def process_genes(
 def run_hg38_single_variant_processing(
     input: str,
     client: Client = None,
-    outdir: str = globe._dir_hg38_variant_proc,
+    effect_dir: str = globe._dir_hg38_variant_effect,
+    meta_dir: str = globe._dir_hg38_variant_meta,
     **kwargs
 ) -> Future:
     """
@@ -394,13 +393,13 @@ def run_hg38_single_variant_processing(
         ## Not a worker
         pass
 
-    return process_variants(client, input, outdir)
+    return process_variants(client, input, effect_dir=effect_dir, meta_dir=meta_dir)
 
 
 def run_hg38_variant_processing(
     client: Client,
     indir: str = globe._dir_hg38_variant_raw,
-    effect_dir: str = globe._dir_hg38_variant_proc,
+    effect_dir: str = globe._dir_hg38_variant_effect,
     meta_dir: str = globe._dir_hg38_variant_meta,
     **kwargs
 ) -> Future:
@@ -426,7 +425,7 @@ def run_hg38_variant_processing(
 def run_hg38_gene_processing(
     client: Client = None,
     input: str = globe._fp_hg38_gene_raw,
-    output: str = globe._fp_hg38_gene_processed,
+    output: str = globe._fp_hg38_gene_meta,
     **kwargs
 ) -> Future:
     """
@@ -450,7 +449,7 @@ def run_hg38_gene_processing(
 def run_mm10_variant_processing(
     client: Client,
     input: str = globe._fp_mm10_variant_raw,
-    effect_out: str = globe._fp_mm10_variant_processed,
+    effect_out: str = globe._fp_mm10_variant_effect,
     meta_out: str = globe._fp_mm10_variant_meta,
     **kwargs
 ) -> Future:
@@ -464,7 +463,7 @@ def run_mm10_variant_processing(
 def run_mm10_gene_processing(
     client: Client,
     input: str = globe._fp_mm10_gene_raw,
-    output: str = globe._fp_mm10_gene_processed,
+    output: str = globe._fp_mm10_gene_meta,
     **kwargs
 ) -> Future:
     """
