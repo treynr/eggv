@@ -110,9 +110,13 @@ def isolate_intergenic_variants(df) -> ddf.DataFrame:
     :return:
     """
 
-    keep = ['chromosome', 'rsid', 'variant_effect']
+    #keep = ['chromosome', 'rsid', 'variant_effect']
+    keep = ['rsid', 'variant_effect']
+    is_upstream = df.variant_effect == 'upstream_gene_variant'
+    is_downstream = df.variant_effect == 'downstream_gene_variant'
+    is_intergenic = (df.variant_effect == 'intergenic') | is_upstream | is_downstream
 
-    return df[df.variant_effect == 'intergenic'].loc[:, keep]
+    return df[is_intergenic].loc[:, keep]
 
 
 def isolate_annotated_variants(df) -> ddf.DataFrame:
@@ -124,12 +128,18 @@ def isolate_annotated_variants(df) -> ddf.DataFrame:
     :return:
     """
 
+    #keep = [
+    #    'chromosome', 'rsid', 'variant_effect', 'gene_id', 'gene_name', 'gene_biotype'
+    #]
     keep = [
-        'chromosome', 'rsid', 'variant_effect', 'gene_id', 'gene_name', 'gene_biotype'
+        'rsid', 'variant_effect', 'gene_id', 'gene_name', 'gene_biotype'
     ]
+    is_upstream = df.variant_effect == 'upstream_gene_variant'
+    is_downstream = df.variant_effect == 'downstream_gene_variant'
+    is_intergenic = is_upstream | is_downstream | (df.variant_effect == 'intergenic')
 
     return (
-        df[(df.variant_effect != 'intergenic') & (df.gene_id.notnull())]
+        df[(~is_intergenic) & (df.gene_id.notnull())]
             .loc[:, keep]
             .drop_duplicates(subset=['rsid', 'variant_effect', 'gene_id'])
     )
@@ -419,6 +429,7 @@ if __name__ == '__main__':
 
     hg38_futures = run_hg38_annotations(client)
     client.gather(hg38_futures)
+
     ## Init logging on each worker
     #client.run(log._initialize_logging, verbose=True)
 
