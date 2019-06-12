@@ -6,7 +6,7 @@
 
 from dask.distributed import Client
 from dask.distributed import LocalCluster
-from dask.distributed import as_completed
+from dask.distributed import fire_and_forget
 from dask.distributed import get_client
 from dask.distributed import get_worker
 from dask.distributed import secede
@@ -19,14 +19,87 @@ import sys
 ## sys path hack so we can import the scripts in the src/ dir.
 ## Assumes this script is being called from the parent directory
 ## i.e., python pipeline/human_pipeline.py
-sys.path.append(os.path.abspath('./'))
-sys.path.append(os.path.abspath('src'))
+#sys.path.append(Path('./').resolve().as_posix())
+#sys.path.append(Path('src').resolve().as_posix())
 
-from src import log
-from src import annotate
-from src import process
-from src import retrieve
+from ..src import globe
+from ..src import log
+from ..src import annotate
+from ..src import process
+from ..src import retrieve
 
+def run_hg38_variant_pipeline(client: Client):
+    """
+
+    :param client:
+    :return:
+    """
+
+    ## Retrieve and process genes from Ensembl
+    raw_genes = retrieve.run_hg38_gene_retrieval(client, force=False)
+    processed_genes = client.submit(process.run_hg38_gene_processing, depends=raw_genes)
+    ## Should return immediately b/c it's a Future of a Future
+    processed_genes = processed_genes.result()
+
+    ## Retrieve variants
+    raw_variants = retrieve.run_hg38_variant_retrieval(client, force=False)
+    annotations = []
+    stats = []
+
+    ## Process and annotate variants by chromosome
+    for future in raw_variants:
+        ## Runs the processing step for this chromosome
+        processed = client.submit(process.run_hg38_single_variant_processing, future)
+
+        ## Should return immediately, Future of a dict of Futures
+        processed = processed.result()
+
+        ## Now annotate the variants using the effects and gene datasets that were
+        ## just processed
+        annotated = client.submit(
+            annotate.run_hg38_chromosome_annotation,
+            processed['effects'],
+            depends=processed_genes
+        )
+
+        ## Should return immediately, Future of a dict of Futures
+        annotated = annotated.result()
+
+        ## Isolate the annotation and mapping summary stats
+        stats.append(annotated['stats'])
+        del annotated['stats']
+
+        annotations.append(annotated)
+
+    ## Combine the mapping stats and save to a file
+    stats = client.submit(annotate.combine_stats, stats)
+    stats_fp = client.submit(
+        annotate.write_annotation_stats, stats, globe._fp_hg38_annotation_stats
+    )
+
+    ## Compute these tasks but we don't care about gathering the results
+    fire_and_forget(stats_fp)
+
+    return annotations
+
+    ## ...and process each variant file as the retrieval step is completed.
+    #for var_future in as_completed(raw_variants):
+    #    pv = client.submit(process.run_hg38_single_variant_processing
+    #    processed_variants.append(
+    #        process.run_hg38_single_variant_processing(client, var_future)
+    #    )
+
+
+    ## Convert the list of variant futures into a dict so they can be used as kwargs, dask
+    ## will automatically wait for them to finish before executing the processing step of
+    ## the pipeline
+    #raw_variants = dict([(f'dep{t[0]}', t[1]) for t in enumerate(raw_variants)])
+    #print(raw_variants)
+    #exit()
+
+    #log._logger.info('Processing genome features')
+
+    #processed_variants = process.run_hg38_variant_processing(client, **raw_variants)
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
@@ -34,6 +107,13 @@ if __name__ == '__main__':
     usage = 'usage: %s [options]'
     parser = ArgumentParser(usage=usage)
 
+    parser.add_argument(
+        '-f',
+        '--force',
+        action='store_true',
+        dest='force',
+        help='force raw dataset retrieval and overwrite local copies if they exist'
+    )
     parser.add_argument(
         '-l',
         '--local',
@@ -54,12 +134,10 @@ if __name__ == '__main__':
 
     init_logging_partial()
 
-    Path('logs').mkdir(exist_ok=True)
-
     if args.local:
 
         cluster = LocalCluster(
-            n_workers=1,
+            n_workers=8,
             processes=True
         )
 
@@ -67,24 +145,31 @@ if __name__ == '__main__':
         cluster = PBSCluster(
             name='variant-etl',
             queue='batch',
-            #interface='ib0',
-            cores=2,
-            processes=2,
+            interface='ib0',
+            cores=1,
+            processes=1,
             memory='60GB',
-            walltime='02:00:00',
-            resource_spec='nodes=1:ppn=2',
+            walltime='03:00:00',
+            ## If your HPC cluster doesn't have local disks (e.g. only has network
+            ## storage) or the local disks are really small, uncomment this or set it
+            ## to another directory
+            local_directory='/tmp',
+            #resource_spec='nodes=1:ppn=1',
             ## Cadillac doesn't like when mem is in the resource_spec string
-            job_extra=['-l mem=60GB', '-e logs', '-o logs'],
+            #job_extra=['-l mem=60GB', '-e logs', '-o logs'],
+            job_extra=['-e variation-logs', '-o variation-logs'],
             env_extra=['cd $PBS_O_WORKDIR']
         )
 
+        Path('variation-logs').mkdir(exist_ok=True)
+
         ## Dynamically adapt to computational requirements, min/max # of jobs
-        cluster.adapt(minimum=5, maximum=5)
+        cluster.adapt(minimum=2, maximum=45)
 
         #print(cluster.job_script())
         #exit()
 
-    log._logger.info('Starting cluster')
+    log._logger.info('Initializing cluster')
 
     client = Client(cluster)
 
@@ -93,6 +178,7 @@ if __name__ == '__main__':
 
     #log._logger.info('Retrieving genome features')
 
+    """
     ## Retrieve + process genes
     raw_genes = retrieve.run_hg38_gene_retrieval(client, force=False)
     #processed_genes = process.run_hg38_gene_processing(client, depends=raw_genes)
@@ -108,6 +194,7 @@ if __name__ == '__main__':
         pv = client.submit(process.run_hg38_single_variant_processing, future)
 
         processed_variants.append(pv.result())
+    """
 
 
     ## ...and process each variant file as the retrieval step is completed.
@@ -129,11 +216,15 @@ if __name__ == '__main__':
 
     #processed_variants = process.run_hg38_variant_processing(client, **raw_variants)
 
+    futures = run_hg38_variant_pipeline(client)
+
+    client.gather(futures)
+
     ## We can gather since the results are small (they're filepaths)
-    client.gather([
-        processed_variants,
-        processed_genes
-    ])
+    #client.gather([
+    #    processed_variants,
+    #    processed_genes
+    #])
 
     log._logger.info('Done')
 
