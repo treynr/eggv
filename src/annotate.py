@@ -34,13 +34,12 @@ def read_processed_variants(fp: str) -> ddf.DataFrame:
     Read and parse a pre-processed file containing Ensembl variation build data. Should
     be in the format created by the process.py module.
 
-    :param fp:
-    :return:
-    """
+    arguments
+        fp: filepath
 
-    #header = [
-    #    'chromosome', 'rsid', 'start', 'end', 'observed', 'maf', 'effect', 'transcript'
-    #]
+    returns
+        a dask dataframe
+    """
 
     return ddf.read_csv(fp, sep='\t', comment='#', dtype={'transcript': 'object'})
 
@@ -50,13 +49,12 @@ def read_processed_genes(fp: str) -> ddf.DataFrame:
     Read and parse a pre-processed file containing Ensembl gene build data. Should
     be in the format created by the process.py module.
 
-    :param fp:
-    :return:
-    """
+    arguments
+        fp: filepath
 
-    #header = [
-    #    'chromosome', 'rsid', 'start', 'end', 'observed', 'maf', 'effect', 'transcript'
-    #]
+    returns
+        a dask dataframe
+    """
 
     return ddf.read_csv(fp, sep='\t', comment='#')
 
@@ -103,15 +101,17 @@ def annotate_variants(vdf, gdf) -> ddf.DataFrame:
 
 def isolate_intergenic_variants(df) -> ddf.DataFrame:
     """
-    Return a dataframe containing only intergenic variants.
+    Return a dataframe containing only intergenic variant annotations.
 
     :param vdf:
     :param gdf:
     :return:
     """
 
-    #keep = ['chromosome', 'rsid', 'variant_effect']
     keep = ['rsid', 'variant_effect']
+
+    ## Down/upstream annotations are present in v.95 mm10 builds but seem to have been
+    ## removed in v.95 hg38 builds
     is_upstream = df.variant_effect == 'upstream_gene_variant'
     is_downstream = df.variant_effect == 'downstream_gene_variant'
     is_intergenic = (df.variant_effect == 'intergenic') | is_upstream | is_downstream
@@ -128,12 +128,8 @@ def isolate_annotated_variants(df) -> ddf.DataFrame:
     :return:
     """
 
-    #keep = [
-    #    'chromosome', 'rsid', 'variant_effect', 'gene_id', 'gene_name', 'gene_biotype'
-    #]
-    keep = [
-        'rsid', 'variant_effect', 'gene_id', 'gene_name', 'gene_biotype'
-    ]
+    keep = ['rsid', 'variant_effect', 'gene_id', 'gene_name', 'gene_biotype']
+
     is_upstream = df.variant_effect == 'upstream_gene_variant'
     is_downstream = df.variant_effect == 'downstream_gene_variant'
     is_intergenic = is_upstream | is_downstream | (df.variant_effect == 'intergenic')
@@ -167,7 +163,7 @@ def write_intergenic_variants(df) -> str:
     ## You have to scatter this or dask bitches and dies
     sdf = client.scatter(isolate_intergenic_variants(df), broadcast=True)
 
-    return dfio.save_distributed_dataframe(sdf)
+    return dfio.save_distributed_dataframe_partitions(sdf)
 
 
 def write_annotated_variants(df) -> str:
@@ -184,7 +180,7 @@ def write_annotated_variants(df) -> str:
     ## You have to scatter this or dask bitches
     sdf = client.scatter(isolate_annotated_variants(df), broadcast=True)
 
-    return dfio.save_distributed_dataframe(sdf)
+    return dfio.save_distributed_dataframe_partitions(sdf)
 
 
 def write_annotation_stats(df, output) -> str:
@@ -253,12 +249,114 @@ def collect_annotation_stats(df) -> ddf.DataFrame:
     return stats
 
 
+def run_hg38_intragenic_annotation(
+    df: ddf.DataFrame,
+    output: str = None,
+    outdir: str = globe._dir_hg38_annotated_intra,
+    client: Client = None,
+    **kwargs
+) -> Future:
+    """
+
+    :param input:
+    :param client:
+    :param gene_fp:
+    :param annotated_dir:
+    :param intergenic_dir:
+    :param kwargs:
+    :return:
+    """
+
+
+def run_hg38_chromosome_annotation(
+    input: str,
+    client: Client = None,
+    gene_fp: str = globe._fp_hg38_gene_meta,
+    annotated_dir: str = globe._dir_hg38_annotated_intra,
+    intergenic_dir: str = globe._dir_hg38_annotated_inter,
+    **kwargs
+):
+    """
+
+    :param client:
+    :return:
+    """
+
+    if not client:
+        client = get_client()
+
+    ## List of Futures for annotated, intergenic, and mapping stats data
+    #annotated = []
+    #intergenic = []
+    #stats = []
+
+    fname = Path(input).name
+
+    log._logger.info(f'Annotating {fname}')
+
+    #variant_fp = Path(variant_dir, f'chromosome-{chrom}.tsv')
+    annotated_fp = Path(annotated_dir, fname)
+    intergenic_fp = Path(intergenic_dir, fname)
+
+    vdf = read_processed_variants(input)
+    gdf = read_processed_genes(gene_fp)
+    adf = annotate_variants(vdf, gdf)
+
+    ## Persist and start computation for the annotated dataset
+    ndf = client.persist(isolate_annotated_variants(adf))
+    idf = client.persist(isolate_intergenic_variants(adf))
+    adf = client.persist(adf)
+
+    ## Scatter the lazy frames to the workers otherwise dask bitches and dies when
+    ## we use submit them to workers for processing
+    sc_adf = client.scatter(adf, broadcast=True)
+    sc_ndf = client.scatter(ndf, broadcast=True)
+    sc_idf = client.scatter(idf, broadcast=True)
+
+    ## Save the distributed dataframes to temp folders
+    #annotated_tmp = client.submit(write_annotated_variants, sc_adf)
+    #intergenic_tmp = client.submit(write_intergenic_variants, sc_adf)
+    annotated_tmp = client.submit(dfio.save_distributed_dataframe_partitions, sc_ndf)
+    intergenic_tmp = client.submit(dfio.save_distributed_dataframe_partitions, sc_idf)
+    #annotated_tmp = client.submit(dfio.save_distributed_dataframe, ndf)
+    #intergenic_tmp = client.submit(dfio.save_distributed_dataframe, idf)
+
+    ## Consolidate distributed datasets
+    annotated_fp = client.submit(
+        dfio.consolidate_separate_partitions, annotated_tmp, annotated_fp
+    )
+    intergenic_fp = client.submit(
+        dfio.consolidate_separate_partitions, intergenic_tmp, intergenic_fp
+    )
+
+    ## Get mapping stats
+    annotation_stats = client.submit(collect_annotation_stats, sc_adf)
+
+        #annotated.append(annotated_fp)
+        #intergenic.append(intergenic_fp)
+        #stats.append(annotation_stats)
+
+        #if chrom == '2':
+        #    break
+
+    ## Combine the mapping stats and save to a file
+    #stats = client.submit(combine_stats, stats)
+    #stats_fp = client.submit(write_annotation_stats, stats, stats_fp)
+
+    return {
+        'annotated': annotated_fp,
+        'intergenic': intergenic_fp,
+        #'stats': stats
+        'stats': annotation_stats
+    }
+
+
 def run_hg38_annotations(
     client: Client,
-    variant_dir: str = globe._dir_hg38_variant_proc,
-    gene_fp: str = globe._fp_hg38_gene_processed,
-    annotated_dir: str = globe._dir_hg38_annotated,
-    intergenic_dir: str = globe._dir_hg38_annotated,
+    variant_dir: str = globe._dir_hg38_variant_effect,
+    gene_fp: str = globe._fp_hg38_gene_meta,
+    annotated_dir: str = globe._dir_hg38_annotated_intra,
+    intergenic_dir: str = globe._dir_hg38_annotated_inter,
     stats_fp: str = globe._fp_hg38_annotation_stats
 ):
     """
@@ -272,58 +370,26 @@ def run_hg38_annotations(
     intergenic = []
     stats = []
 
+    ## Iterate through all chromosomes
     for chrom in globe._var_human_chromosomes:
-    #for chrom in ['19', '20', '21', '22']:
-    #for chrom in ['4']:
-    #for chrom in ['1', '2', '3', '4']:
-    #for chrom in ['10', '11', '12', '13']:
 
         log._logger.info(f'Starting chromosome {chrom} work')
 
+        ## Generate the processed variant filepath based on chromosome
         variant_fp = Path(variant_dir, f'chromosome-{chrom}.tsv')
-        annotated_fp = Path(annotated_dir, f'annotated-chromosome-{chrom}.tsv')
-        intergenic_fp = Path(intergenic_dir, f'intergenic-chromosome-{chrom}.tsv')
 
-        vdf = read_processed_variants(variant_fp)
-        gdf = read_processed_genes(gene_fp)
-        adf = annotate_variants(vdf, gdf)
-
-        ## Persist and start computation for the annotated dataset
-        ndf = client.persist(isolate_annotated_variants(adf))
-        idf = client.persist(isolate_intergenic_variants(adf))
-        adf = client.persist(adf)
-
-        ## Scatter the lazy frames to the workers otherwise dask bitches and dies when
-        ## we use submit them to workers for processing
-        sc_adf = client.scatter(adf, broadcast=True)
-        sc_ndf = client.scatter(ndf, broadcast=True)
-        sc_idf = client.scatter(idf, broadcast=True)
-
-        ## Save the distributed dataframes to temp folders
-        #annotated_tmp = client.submit(write_annotated_variants, sc_adf)
-        #intergenic_tmp = client.submit(write_intergenic_variants, sc_adf)
-        annotated_tmp = client.submit(dfio.save_distributed_dataframe, sc_ndf)
-        intergenic_tmp = client.submit(dfio.save_distributed_dataframe, sc_idf)
-        #annotated_tmp = client.submit(dfio.save_distributed_dataframe, ndf)
-        #intergenic_tmp = client.submit(dfio.save_distributed_dataframe, idf)
-
-        ## Consolidate distributed datasets
-        annotated_fp = client.submit(
-            dfio.consolidate_separate_partitions, annotated_tmp, annotated_fp
-        )
-        intergenic_fp = client.submit(
-            dfio.consolidate_separate_partitions, intergenic_tmp, intergenic_fp
+        ## Run the annotation pipeline for this chromosome
+        annotations = run_hg38_chromosome_annotation(
+            variant_fp,
+            client,
+            gene_fp=gene_fp,
+            annotated_dir=annotated_dir,
+            intergenic_dir=intergenic_dir
         )
 
-        ## Get mapping stats
-        annotation_stats = client.submit(collect_annotation_stats, sc_adf)
-
-        annotated.append(annotated_fp)
-        intergenic.append(intergenic_fp)
-        stats.append(annotation_stats)
-
-        #if chrom == '2':
-        #    break
+        annotated.append(annotations['annotated'])
+        intergenic.append(annotations['intergenic'])
+        stats.append(annotations['stats'])
 
     ## Combine the mapping stats and save to a file
     stats = client.submit(combine_stats, stats)
@@ -332,15 +398,97 @@ def run_hg38_annotations(
     return {
         'annotated': annotated,
         'intergenic': intergenic,
-        #'stats': stats
         'stats': stats_fp
     }
+
+#def run_hg38_annotations(
+#    client: Client,
+#    variant_dir: str = globe._dir_hg38_variant_effect,
+#    gene_fp: str = globe._fp_hg38_gene_meta,
+#    annotated_dir: str = globe._dir_hg38_annotated,
+#    intergenic_dir: str = globe._dir_hg38_annotated,
+#    stats_fp: str = globe._fp_hg38_annotation_stats
+#):
+#    """
+#
+#    :param client:
+#    :return:
+#    """
+#
+#    ## List of Futures for annotated, intergenic, and mapping stats data
+#    annotated = []
+#    intergenic = []
+#    stats = []
+#
+#    for chrom in globe._var_human_chromosomes:
+#    #for chrom in ['19', '20', '21', '22']:
+#    #for chrom in ['4']:
+#    #for chrom in ['1', '2', '3', '4']:
+#    #for chrom in ['10', '11', '12', '13']:
+#
+#        log._logger.info(f'Starting chromosome {chrom} work')
+#
+#        variant_fp = Path(variant_dir, f'chromosome-{chrom}.tsv')
+#        annotated_fp = Path(annotated_dir, f'annotated-chromosome-{chrom}.tsv')
+#        intergenic_fp = Path(intergenic_dir, f'intergenic-chromosome-{chrom}.tsv')
+#
+#        vdf = read_processed_variants(variant_fp)
+#        gdf = read_processed_genes(gene_fp)
+#        adf = annotate_variants(vdf, gdf)
+#
+#        ## Persist and start computation for the annotated dataset
+#        ndf = client.persist(isolate_annotated_variants(adf))
+#        idf = client.persist(isolate_intergenic_variants(adf))
+#        adf = client.persist(adf)
+#
+#        ## Scatter the lazy frames to the workers otherwise dask bitches and dies when
+#        ## we use submit them to workers for processing
+#        sc_adf = client.scatter(adf, broadcast=True)
+#        sc_ndf = client.scatter(ndf, broadcast=True)
+#        sc_idf = client.scatter(idf, broadcast=True)
+#
+#        ## Save the distributed dataframes to temp folders
+#        #annotated_tmp = client.submit(write_annotated_variants, sc_adf)
+#        #intergenic_tmp = client.submit(write_intergenic_variants, sc_adf)
+#        annotated_tmp = client.submit(dfio.save_distributed_dataframe, sc_ndf)
+#        intergenic_tmp = client.submit(dfio.save_distributed_dataframe, sc_idf)
+#        #annotated_tmp = client.submit(dfio.save_distributed_dataframe, ndf)
+#        #intergenic_tmp = client.submit(dfio.save_distributed_dataframe, idf)
+#
+#        ## Consolidate distributed datasets
+#        annotated_fp = client.submit(
+#            dfio.consolidate_separate_partitions, annotated_tmp, annotated_fp
+#        )
+#        intergenic_fp = client.submit(
+#            dfio.consolidate_separate_partitions, intergenic_tmp, intergenic_fp
+#        )
+#
+#        ## Get mapping stats
+#        annotation_stats = client.submit(collect_annotation_stats, sc_adf)
+#
+#        annotated.append(annotated_fp)
+#        intergenic.append(intergenic_fp)
+#        stats.append(annotation_stats)
+#
+#        #if chrom == '2':
+#        #    break
+#
+#    ## Combine the mapping stats and save to a file
+#    stats = client.submit(combine_stats, stats)
+#    stats_fp = client.submit(write_annotation_stats, stats, stats_fp)
+#
+#    return {
+#        'annotated': annotated,
+#        'intergenic': intergenic,
+#        #'stats': stats
+#        'stats': stats_fp
+#    }
 
 
 def run_mm10_annotations(
     client: Client,
-    variant_fp: str = globe._fp_mm10_variant_processed,
-    gene_fp: str = globe._fp_mm10_gene_processed,
+    variant_fp: str = globe._fp_mm10_variant_effect,
+    gene_fp: str = globe._fp_mm10_gene_meta,
     annotated_fp: str = globe._fp_mm10_annotated,
     intergenic_fp: str = globe._fp_mm10_intergenic,
     stats_fp: str = globe._fp_mm10_annotation_stats
@@ -369,8 +517,8 @@ def run_mm10_annotations(
     ## Save the distributed dataframes to temp folders
     #annotated_tmp = client.submit(write_annotated_variants, sc_adf)
     #intergenic_tmp = client.submit(write_intergenic_variants, sc_adf)
-    annotated_tmp = client.submit(dfio.save_distributed_dataframe, sc_ndf)
-    intergenic_tmp = client.submit(dfio.save_distributed_dataframe, sc_idf)
+    annotated_tmp = client.submit(dfio.save_distributed_dataframe_partitions, sc_ndf)
+    intergenic_tmp = client.submit(dfio.save_distributed_dataframe_partitions, sc_idf)
 
     ## Consolidate distributed datasets
     annotated_fp = client.submit(

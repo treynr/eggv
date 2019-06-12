@@ -228,7 +228,7 @@ def run_mm10_variant_formatting(
 
 def run_hg38_gene_formatting(
     client: Client,
-    input: str = globe._fp_hg38_gene_processed,
+    input: str = globe._fp_hg38_gene_meta,
     output: str = globe._fp_hg38_neo_gene,
     header: str = globe._fp_hg38_neo_gene_head,
     **kwargs
@@ -245,7 +245,7 @@ def run_hg38_gene_formatting(
 
 def run_mm10_gene_formatting(
     client: Client,
-    input: str = globe._fp_mm10_gene_processed,
+    input: str = globe._fp_mm10_gene_meta,
     output: str = globe._fp_mm10_neo_gene,
     header: str = globe._fp_mm10_neo_gene_head,
     **kwargs
