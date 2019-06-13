@@ -286,13 +286,14 @@ if __name__ == '__main__':
     ## Init logging on each worker
     client.run(log._initialize_logging, verbose=True)
 
-    hg38_variants = run_hg38_variant_retrieval(client, force=False)
-    hg38_genes = run_hg38_gene_retrieval(client, force=False)
+    #hg38_variants = run_hg38_variant_retrieval(client, force=False)
+    #hg38_genes = run_hg38_gene_retrieval(client, force=False)
 
     mm10_variants = run_mm10_variant_retrieval(client, force=False)
     mm10_genes = run_mm10_gene_retrieval(client, force=False)
 
-    client.gather([hg38_variants, hg38_genes, mm10_variants, mm10_genes])
+    #client.gather([hg38_variants, hg38_genes, mm10_variants, mm10_genes])
+    client.gather([mm10_variants, mm10_genes])
 
     #client.gather(hg38_variants)
     #client.gather(hg38_genes)

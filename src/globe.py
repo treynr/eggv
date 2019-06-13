@@ -81,37 +81,59 @@ _dir_mm10_neo_variant_rel = Path(_dir_mm10_neo_variant, 'relations').as_posix()
 
 ## Output files ##
 
-_fp_hg38_gene_compressed = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf.gz')
-_fp_hg38_gene_raw = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf')
-_fp_hg38_gene_meta = Path(_dir_hg38_gene_meta, 'hg38-gene-build.gtf')
+_fp_hg38_gene_compressed = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf.gz').as_posix()
+_fp_hg38_gene_raw = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf').as_posix()
+_fp_hg38_gene_meta = Path(_dir_hg38_gene_meta, 'hg38-gene-build.gtf').as_posix()
 
-_fp_mm10_gene_compressed = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf.gz')
-_fp_mm10_gene_raw = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf')
-_fp_mm10_gene_meta = Path(_dir_mm10_gene_meta, 'mm10-gene-build.gtf')
+_fp_mm10_gene_compressed = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf.gz').as_posix()
+_fp_mm10_gene_raw = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf').as_posix()
+_fp_mm10_gene_meta = Path(_dir_mm10_gene_meta, 'mm10-gene-build.gtf').as_posix()
 
-_fp_mm10_variant_compressed = Path(_dir_mm10_variant_raw, 'mm10-variant-build.gvf.gz')
-_fp_mm10_variant_raw = Path(_dir_mm10_variant_raw, 'mm10-variant-build.gvf')
-_fp_mm10_variant_effect = Path(_dir_mm10_variant_effect, 'mm10-variant-build.tsv')
-_fp_mm10_variant_meta = Path(_dir_mm10_variant_meta, 'mm10-variant-build-metadata.tsv')
+_fp_mm10_variant_compressed = Path(
+    _dir_mm10_variant_raw, 'mm10-variant-build.gvf.gz'
+).as_posix()
+_fp_mm10_variant_raw = Path(_dir_mm10_variant_raw, 'mm10-variant-build.gvf').as_posix()
+_fp_mm10_variant_effect = Path(
+    _dir_mm10_variant_effect, 'mm10-variant-build.tsv'
+).as_posix()
+_fp_mm10_variant_meta = Path(
+    _dir_mm10_variant_meta, 'mm10-variant-build-metadata.tsv'
+).as_posix()
 
-_fp_mm10_annotated = Path(_dir_mm10_annotated, 'mm10-annotated-variants.tsv')
-_fp_mm10_intergenic = Path(_dir_mm10_annotated, 'mm10-intergenic-variants.tsv')
+_fp_mm10_intergenic = Path(_dir_mm10_annotated, 'mm10-intergenic-variants.tsv').as_posix()
+_fp_mm10_intragenic = Path(_dir_mm10_annotated, 'mm10-intragenic-variants.tsv').as_posix()
 
-_fp_hg38_annotation_stats = Path(_dir_stats, 'hg38-variant-annotation-stats.tsv')
-_fp_mm10_annotation_stats = Path(_dir_stats, 'mm10-variant-annotation-stats.tsv')
+_fp_hg38_annotation_stats = Path(
+    _dir_stats, 'hg38-variant-annotation-stats.tsv'
+).as_posix()
+_fp_mm10_annotation_stats = Path(
+    _dir_stats, 'mm10-variant-annotation-stats.tsv'
+).as_posix()
 
 ## Neo4j outputs
-_fp_hg38_neo_gene = Path(_dir_hg38_neo_gene, 'hg38-gene-build.tsv')
-_fp_hg38_neo_gene_head = Path(_dir_hg38_neo_gene, 'hg38-gene-head.tsv')
-_fp_hg38_neo_variant_meta_head = Path(_dir_hg38_neo_variant_meta, 'hg38-variant-head.tsv')
-_fp_hg38_neo_variant_rel_head = Path(_dir_hg38_neo_variant_rel, 'hg38-variant-relations-head.tsv')
+_fp_hg38_neo_gene = Path(_dir_hg38_neo_gene, 'hg38-gene-build.tsv').as_posix()
+_fp_hg38_neo_gene_head = Path(_dir_hg38_neo_gene, 'hg38-gene-head.tsv').as_posix()
+_fp_hg38_neo_variant_meta_head = Path(
+    _dir_hg38_neo_variant_meta, 'hg38-variant-head.tsv'
+).as_posix()
+_fp_hg38_neo_variant_rel_head = Path(
+    _dir_hg38_neo_variant_rel, 'hg38-variant-relations-head.tsv'
+).as_posix()
 
-_fp_mm10_neo_gene = Path(_dir_mm10_neo_gene, 'mm10-gene-build.tsv')
-_fp_mm10_neo_gene_head = Path(_dir_mm10_neo_gene, 'mm10-gene-head.tsv')
-_fp_mm10_neo_variant_meta = Path(_dir_mm10_neo_variant_meta, 'mm10-variant-build-metadata.tsv')
-_fp_mm10_neo_variant_meta_head = Path(_dir_mm10_neo_variant_meta, 'mm10-variant-head.tsv')
-_fp_mm10_neo_variant_rel = Path(_dir_mm10_neo_variant_rel, 'mm10-variant-relations.tsv')
-_fp_mm10_neo_variant_rel_head = Path(_dir_mm10_neo_variant_rel, 'mm10-variant-relations-head.tsv')
+_fp_mm10_neo_gene = Path(_dir_mm10_neo_gene, 'mm10-gene-build.tsv').as_posix()
+_fp_mm10_neo_gene_head = Path(_dir_mm10_neo_gene, 'mm10-gene-head.tsv').as_posix()
+_fp_mm10_neo_variant_meta = Path(
+    _dir_mm10_neo_variant_meta, 'mm10-variant-build-metadata.tsv'
+).as_posix()
+_fp_mm10_neo_variant_meta_head = Path(
+    _dir_mm10_neo_variant_meta, 'mm10-variant-head.tsv'
+).as_posix()
+_fp_mm10_neo_variant_rel = Path(
+    _dir_mm10_neo_variant_rel, 'mm10-variant-relations.tsv'
+).as_posix()
+_fp_mm10_neo_variant_rel_head = Path(
+    _dir_mm10_neo_variant_rel, 'mm10-variant-relations-head.tsv'
+).as_posix()
 
 ## In case these don't exist
 try:

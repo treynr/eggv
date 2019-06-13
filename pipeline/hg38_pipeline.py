@@ -7,6 +7,7 @@
 from dask.distributed import Client
 from dask.distributed import LocalCluster
 from dask.distributed import fire_and_forget
+from dask.distributed import as_completed
 from dask.distributed import get_client
 from dask.distributed import get_worker
 from dask.distributed import secede
@@ -22,6 +23,7 @@ import sys
 #sys.path.append(Path('./').resolve().as_posix())
 #sys.path.append(Path('src').resolve().as_posix())
 
+from ..src import dfio
 from ..src import globe
 from ..src import log
 from ..src import annotate
@@ -35,35 +37,81 @@ def run_hg38_variant_pipeline(client: Client):
     :return:
     """
 
-    ## Retrieve and process genes from Ensembl
-    raw_genes = retrieve.run_hg38_gene_retrieval(client, force=False)
-    processed_genes = client.submit(process.run_hg38_gene_processing, depends=raw_genes)
-    ## Should return immediately b/c it's a Future of a Future
-    processed_genes = processed_genes.result()
+    ## Will hold a list of Futures representing IO operations (saving processed datasets)
+    file_futures = []
 
-    ## Retrieve variants
+    ## Retrieve the gene build from Ensembl
+    raw_genes = retrieve.run_hg38_gene_retrieval(client, force=False)
+
+    ## Process the raw gene dataset after it's finished downloading, returns a dask DF
+    ## encapsulated by a Future
+    gene_df_future = client.submit(
+        process.run_hg38_gene_processing_pipeline, input=raw_genes
+    )
+
+    ## Scatter and let a worker save the file
+    #file_futures.append(client.submit(
+    #    dfio.save_dataset,
+    #    client.scatter(genes_df, broadcast=True),
+    #    output=globe._fp_hg38_gene_meta
+    #))
+
+    ## Retrieve genomic variant builds from Ensembl
     raw_variants = retrieve.run_hg38_variant_retrieval(client, force=False)
     annotations = []
     stats = []
 
-    ## Process and annotate variants by chromosome
-    for future in raw_variants:
-        ## Runs the processing step for this chromosome
-        processed = client.submit(process.run_hg38_single_variant_processing, future)
+    ## We can't do anything until the variants are finished downloading/decompressing,
+    ## so we process them as they complete
+    for _, variant_path in as_completed(raw_variants, with_results=True):
 
-        ## Should return immediately, Future of a dict of Futures
-        processed = processed.result()
+        ## Run the processing step for this chromosome, don't have to submit to workers
+        ## b/c this should return lazy DFs
+        processed = process.run_variant_processing_pipeline(variant_path)
+
+        ## Variant metadata and effects
+        meta_df = processed['metadata']
+        effect_df = processed['effects']
+
+        ## Save these intermediate datasets in the background while we continue
+        file_futures.append(client.submit(
+            dfio.save_dataset,
+            client.scatter(meta_df, broadcast=True),
+            name=variant_path,
+            outdir=globe._dir_hg38_variant_meta
+        ))
+        file_futures.append(client.submit(
+            dfio.save_dataset,
+            client.scatter(effect_df, broadcast=True),
+            name=variant_path,
+            outdir=globe._dir_hg38_variant_effect
+        ))
 
         ## Now annotate the variants using the effects and gene datasets that were
-        ## just processed
-        annotated = client.submit(
-            annotate.run_hg38_chromosome_annotation,
-            processed['effects'],
-            depends=processed_genes
-        )
+        ## just processed. This will block until the genes have finished processing
+        ## since we can't do anything without them
+        annotations = annotate.run_annotation_pipeline(effect_df, gene_df_future.result())
+
+        ## separate (inter|intra)genic annotations
+        intergenic = annotations['intergenic']
+        intragenic = annotations['intragenic']
+
+        ## Save these intermediate datasets in the background while we continue
+        file_futures.append(client.submit(
+            dfio.save_dataset,
+            client.scatter(meta_df, broadcast=True),
+            name=variant_path,
+            outdir=globe._dir_hg38_variant_meta
+        ))
+        file_futures.append(client.submit(
+            dfio.save_dataset,
+            client.scatter(effect_df, broadcast=True),
+            name=variant_path,
+            outdir=globe._dir_hg38_variant_effect
+        ))
 
         ## Should return immediately, Future of a dict of Futures
-        annotated = annotated.result()
+        #annotated = annotated.result()
 
         ## Isolate the annotation and mapping summary stats
         stats.append(annotated['stats'])
