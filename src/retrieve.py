@@ -37,7 +37,8 @@ def _download(url, output):
         response.raise_for_status()
 
         with open(output, 'wb') as fl:
-            for chunk in response.iter_content(chunk_size=1024):
+            ## Chunk size of 250MB
+            for chunk in response.iter_content(chunk_size=250000000):
                 fl.write(chunk)
 
     except Exception as e:
@@ -284,7 +285,7 @@ def run_mm10_gene_retrieval(client: Client, force: bool = False) -> Future:
 if __name__ == '__main__':
 
     client = Client(LocalCluster(
-        n_workers=8,
+        n_workers=5,
         processes=True
     ))
 

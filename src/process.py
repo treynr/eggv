@@ -456,12 +456,12 @@ def run_complete_mm10_variant_processing_pipeline(
 
     results = run_variant_processing_pipeline(input, client=client)
 
-    ## Have to scatter the DFs prior to using submit otherwise a puppy dies
-    meta_df = client.scatter(results['metadata'], broadcast=True)
-    effect_df = client.scatter(results['effects'], broadcast=True)
-
-    meta_future = client.submit(dfio.save_dataset, meta_df, output=effect_path)
-    effect_future = client.submit(dfio.save_dataset, effect_df, output=meta_path)
+    effect_future = dfio.save_dataset_in_background(
+        results['effects'], output=effect_path
+    )
+    meta_future = dfio.save_dataset_in_background(
+        results['metadata'], output=meta_path
+    )
 
     ## Return the filepaths from the dataframe IO functions
     return {
@@ -510,11 +510,8 @@ def run_complete_hg38_gene_processing_pipeline(
     ## Run the pipeline and process the genes
     gene_df = run_hg38_gene_processing_pipeline(input, client=client)
 
-    ## Scatter to workers prior to saving
-    gene_df = client.scatter(gene_df, broadcast=True)
-
     ## Write the dataframe to a file
-    gene_future = client.submit(dfio.save_dataset, gene_df, output=output)
+    gene_future = dfio.save_dataset_in_background(gene_df, output=output)
 
     return gene_future
 
@@ -545,11 +542,8 @@ def run_complete_mm10_gene_processing_pipeline(
     ## Run the pipeline and process the genes
     gene_df = run_mm10_gene_processing_pipeline(input, client=client)
 
-    ## Scatter to workers prior to saving
-    gene_df = client.scatter(gene_df, broadcast=True)
-
     ## Write the dataframe to a file
-    gene_future = client.submit(dfio.save_dataset, gene_df, output=output)
+    gene_future = dfio.save_dataset_in_background(gene_df, output=output)
 
     return gene_future
 
@@ -569,16 +563,17 @@ if __name__ == '__main__':
         #cores=2,
         #processes=2,
         #memory='160GB',
-        cores=1,
-        processes=1,
-        memory='80GB',
+        cores=2,
+        processes=2,
+        memory='140GB',
         local_directory='/tmp',
         walltime='03:00:00',
         job_extra=['-e logs', '-o logs'],
         env_extra=['cd $PBS_O_WORKDIR']
     )
 
-    cluster.adapt(minimum=10, maximum=45)
+    #cluster.adapt(minimum=10, maximum=45)
+    cluster.scale_up(n=40)
 
     client = Client(cluster)
 
@@ -592,11 +587,13 @@ if __name__ == '__main__':
     #)
 
     #hg38_genes = run_complete_hg38_gene_processing_pipeline()
-    hg38_variants = run_complete_hg38_variant_processing_pipeline()
-    client.gather(hg38_variants)
+    #hg38_variants = run_complete_hg38_variant_processing_pipeline()
+    #client.gather(hg38_variants)
     #client.gather(hg38_genes)
-    #mm10_variants = run_complete_mm10_variant_processing_pipeline()
-    #client.gather(mm10_variants)
+    mm10_genes = run_complete_mm10_gene_processing_pipeline()
+    mm10_variants = run_complete_mm10_variant_processing_pipeline()
+    client.gather(mm10_variants)
+    client.gather(mm10_genes)
     ## Init logging on each worker
     #client.run(log._initialize_logging, verbose=True)
 

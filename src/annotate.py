@@ -190,26 +190,38 @@ def run_complete_hg38_annotation_pipeline(
     ## Read/parse processed genes into a dask dataframe
     gene_df = _read_processed_genes(gene_fp)
 
+    log._logger.info(f'Reading files in {variant_dir}')
+
     ## The input directory should have variant effect TSV files if no custom output
     ## filenames were used and the pipeline has used default settings to this point
     for fp in glob(f'{variant_dir}/*.tsv'):
 
+        log._logger.info(f'Working on {fp}')
         ## Read/parse processed variants into a dask dataframe
         variant_df = _read_processed_variants(fp)
 
         ## Annotate
         annotations = run_annotation_pipeline(variant_df, gene_df, client=client)
 
+        intergenic = annotations['intergenic']
+        intragenic = annotations['intragenic']
+
         ## Scatter annotations prior to saving
-        intergenic = client.scatter(annotations['intergenic'])
-        intragenic = client.scatter(annotations['intragenic'])
+        #intergenic = client.scatter(annotations['intergenic'])
+        #intragenic = client.scatter(annotations['intragenic'])
 
         ## Save to files
-        inter_future = client.submit(
-            dfio.save_dataset, intergenic, name=fp, outdir=intergenic_dir
+        #inter_future = client.submit(
+        #    dfio.save_dataset, intergenic, name=fp, outdir=intergenic_dir
+        #)
+        #intra_future = client.submit(
+        #    dfio.save_dataset, intragenic, name=fp, outdir=intragenic_dir
+        #)
+        inter_future = dfio.save_dataset_in_background(
+            intergenic, name=fp, outdir=intergenic_dir
         )
-        intra_future = client.submit(
-            dfio.save_dataset, intragenic, name=fp, outdir=intragenic_dir
+        intra_future = dfio.save_dataset_in_background(
+            intragenic, name=fp, outdir=intragenic_dir
         )
 
         futures.append({
@@ -283,19 +295,24 @@ if __name__ == '__main__':
         name='variant-etl',
         queue='batch',
         interface='ib0',
-        #cores=2,
-        #processes=2,
-        #memory='80GB',
-        cores=1,
-        processes=1,
-        memory='45GB',
+        cores=2,
+        processes=2,
+        memory='60GB',
+        #cores=1,
+        #processes=1,
+        #memory='45GB',
         walltime='00:50:00',
-        local_directory='/var/tmp',
+        local_directory='/tmp',
         job_extra=['-e logs', '-o logs'],
         env_extra=['cd $PBS_O_WORKDIR']
     )
 
-    cluster.adapt(minimum=10, maximum=45)
+    #cluster.adapt(minimum=10, maximum=45)
+
+    ## n submits jobs based on the cores we asked for, since asking for 2 cores per job
+    ## this will submit 20 jobs (40 / 2). Each job has 90GB of memory, and since we
+    ## specify two processes (1 core per process), each process has 45GB of memory.
+    cluster.scale_up(n=60)
 
     client = Client(cluster)
 
@@ -306,7 +323,7 @@ if __name__ == '__main__':
     #mm10_futures = run_mm10_annotations(client)
     #client.gather(mm10_futures)
 
-    hg38_futures = run_complete_hg38_annotation_pipeline(client)
+    hg38_futures = run_complete_hg38_annotation_pipeline(client=client)
     client.gather(hg38_futures)
 
     ## Init logging on each worker
