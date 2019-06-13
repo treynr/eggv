@@ -45,13 +45,15 @@ def _download(url, output):
         raise
 
 
-def _unzip(fp: str, output: str = None, **kwargs) -> None:
+def _unzip(fp: str, output: str = None, force: bool = False, **kwargs) -> None:
     """
     Unzip a gzipped file to the given output path.
 
     arguments
         fp:     zipped input filepath
         output: output path
+        force:  if true, decompress the dataset even if the decompressed version already
+                exists
         kwargs: used to trick dask into creating Future dependencies for this function
     """
 
@@ -60,6 +62,11 @@ def _unzip(fp: str, output: str = None, **kwargs) -> None:
     ## Assuming the input has a file extension like '.tar.gz' this well get rid of '.gz'
     if not output:
         output = Path(fp).with_suffix('')
+
+    if Path(output).exists() and not force:
+        log._logger.warning(
+            f'Skipping {output}, already decompressed, use force=True to decompress'
+        )
 
     with gzip.open(fp, 'rb') as gfl, open(output, 'wb') as ufl:
         shutil.copyfileobj(gfl, ufl)
@@ -204,7 +211,7 @@ def run_hg38_variant_retrieval(client: Client, force: bool = False) -> List[Futu
         dl = client.submit(download_hg38_variant_build, chrom, force=force)
 
         ## Decompress
-        dl_unzip = client.submit(_unzip, dl)
+        dl_unzip = client.submit(_unzip, dl, force=force)
 
         futures.append(dl_unzip)
 
@@ -227,7 +234,7 @@ def run_hg38_gene_retrieval(client: Client, force: bool = False) -> Future:
     dl = client.submit(download_hg38_gene_build, force=force)
 
     ## Decompress
-    dl_unzip = client.submit(_unzip, dl)
+    dl_unzip = client.submit(_unzip, dl, force=force)
 
     return dl_unzip
 
@@ -248,7 +255,7 @@ def run_mm10_variant_retrieval(client: Client, force: bool = False) -> List[Futu
     dl = client.submit(download_mm10_variant_build, force=force)
 
     ## Decompress
-    dl_unzip = client.submit(_unzip, dl)
+    dl_unzip = client.submit(_unzip, dl, force=force)
 
     return dl_unzip
 
@@ -269,7 +276,7 @@ def run_mm10_gene_retrieval(client: Client, force: bool = False) -> Future:
     dl = client.submit(download_mm10_gene_build, force=force)
 
     ## Decompress
-    dl_unzip = client.submit(_unzip, dl)
+    dl_unzip = client.submit(_unzip, dl, force=force)
 
     return dl_unzip
 
