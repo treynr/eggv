@@ -252,7 +252,7 @@ def _isolate_variant_metadata(df: ddf.DataFrame) -> ddf.DataFrame:
     :return:
     """
 
-    return df[['chromosome', 'rsid', 'start', 'end', 'observed', 'maf']].drop_duplicates(
+    return df[['chromosome', 'start', 'end', 'rsid', 'observed', 'maf']].drop_duplicates(
         subset=['rsid']
     )
 
