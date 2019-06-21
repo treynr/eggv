@@ -498,6 +498,7 @@ def run_hg38_gene_processing_pipeline(
 def run_complete_hg38_gene_processing_pipeline(
     input: str = globe._fp_hg38_gene_raw,
     output: str = globe._fp_hg38_gene_meta,
+    dedup_output: str = globe._fp_hg38_gene_dedup,
     client: Client = None,
     **kwargs
 ) -> Future:
@@ -513,7 +514,13 @@ def run_complete_hg38_gene_processing_pipeline(
     ## Write the dataframe to a file
     gene_future = dfio.save_dataset_in_background(gene_df, output=output)
 
-    return gene_future
+    ## Generate a deduplicated version based on genes alone
+    dedup_future = dfio.save_dataset_in_background(
+        gene_df.drop_duplicates(subset=['gene_id']), output=dedup_output
+    )
+
+    return [gene_future, dedup_future]
+
 
 
 def run_mm10_gene_processing_pipeline(
@@ -530,6 +537,7 @@ def run_mm10_gene_processing_pipeline(
 def run_complete_mm10_gene_processing_pipeline(
     input: str = globe._fp_mm10_gene_raw,
     output: str = globe._fp_mm10_gene_meta,
+    dedup_output: str = globe._fp_mm10_gene_dedup,
     client: Client = None,
     **kwargs
 ) -> Future:
@@ -545,7 +553,12 @@ def run_complete_mm10_gene_processing_pipeline(
     ## Write the dataframe to a file
     gene_future = dfio.save_dataset_in_background(gene_df, output=output)
 
-    return gene_future
+    ## Generate a deduplicated version based on genes alone
+    dedup_future = dfio.save_dataset_in_background(
+        gene_df.drop_duplicates(subset=['gene_id']), output=dedup_output
+    )
+
+    return [gene_future, dedup_future]
 
 
 if __name__ == '__main__':
@@ -566,14 +579,14 @@ if __name__ == '__main__':
         cores=2,
         processes=2,
         memory='140GB',
-        local_directory='/tmp',
-        walltime='03:00:00',
+        local_directory='/var/tmp',
+        walltime='01:00:00',
         job_extra=['-e logs', '-o logs'],
         env_extra=['cd $PBS_O_WORKDIR']
     )
 
     #cluster.adapt(minimum=10, maximum=45)
-    cluster.scale_up(n=40)
+    cluster.scale_up(n=20)
 
     client = Client(cluster)
 
@@ -586,13 +599,13 @@ if __name__ == '__main__':
     #    Path(globe._dir_hg38_variant_raw, 'hg38-chromosome-10.gvf').as_posix()
     #)
 
-    #hg38_genes = run_complete_hg38_gene_processing_pipeline()
+    hg38_genes = run_complete_hg38_gene_processing_pipeline()
     #hg38_variants = run_complete_hg38_variant_processing_pipeline()
     #client.gather(hg38_variants)
-    #client.gather(hg38_genes)
     mm10_genes = run_complete_mm10_gene_processing_pipeline()
-    mm10_variants = run_complete_mm10_variant_processing_pipeline()
-    client.gather(mm10_variants)
+    #mm10_variants = run_complete_mm10_variant_processing_pipeline()
+    #client.gather(mm10_variants)
+    client.gather(hg38_genes)
     client.gather(mm10_genes)
     ## Init logging on each worker
     #client.run(log._initialize_logging, verbose=True)

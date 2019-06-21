@@ -84,10 +84,16 @@ _dir_mm10_neo_variant_rel = Path(_dir_mm10_neo_variant, 'relations').as_posix()
 _fp_hg38_gene_compressed = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf.gz').as_posix()
 _fp_hg38_gene_raw = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf').as_posix()
 _fp_hg38_gene_meta = Path(_dir_hg38_gene_meta, 'hg38-gene-build.gtf').as_posix()
+_fp_hg38_gene_dedup = Path(
+    _dir_hg38_gene_meta, 'hg38-gene-build-deduplicated.gtf'
+).as_posix()
 
 _fp_mm10_gene_compressed = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf.gz').as_posix()
 _fp_mm10_gene_raw = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf').as_posix()
 _fp_mm10_gene_meta = Path(_dir_mm10_gene_meta, 'mm10-gene-build.gtf').as_posix()
+_fp_mm10_gene_dedup = Path(
+    _dir_mm10_gene_meta, 'mm10-gene-build-deduplicated.gtf'
+).as_posix()
 
 _fp_mm10_variant_compressed = Path(
     _dir_mm10_variant_raw, 'mm10-variant-build.gvf.gz'
