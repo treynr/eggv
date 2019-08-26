@@ -69,6 +69,10 @@ def annotate_variants(vdf, gdf) -> ddf.DataFrame:
     :return:
     """
 
+    ## Force transcript to be an empty string if it's missing, which will be the case
+    ## for intergenic variants
+    vdf['transcript'] = vdf.transcript.fillna('').astype(str)
+
     ## Merge variant and gene frames based on the Ensembl transcript ID. Normally we
     ## use an inner merge but use a left merge instead so we can collect mapping
     ## statistics later on
@@ -77,7 +81,8 @@ def annotate_variants(vdf, gdf) -> ddf.DataFrame:
         how='left',
         left_on='transcript',
         right_on='transcript_id',
-        suffixes=('_l', '_r')
+        suffixes=('_l', '_r'),
+        npartitions=150
     )
 
     ## Rename some columns
@@ -137,7 +142,7 @@ def isolate_intragenic_variants(df) -> ddf.DataFrame:
     return (
         df[(~is_intergenic) & (df.gene_id.notnull())]
             .loc[:, keep]
-            .drop_duplicates(subset=['rsid', 'variant_effect', 'gene_id'])
+            .drop_duplicates(subset=['rsid', 'variant_effect', 'gene_id'], split_out=150)
     )
 
 

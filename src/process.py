@@ -56,7 +56,12 @@ def _read_gvf_file(fp: str) -> ddf.DataFrame:
 
     ## Sometimes type inference fails since not all chromosomes (seqid) are numbers
     return ddf.read_csv(
-        fp, sep='\t', comment='#', header=None, names=header, dtype={'seqid': 'object'}
+        fp,
+        sep='\t',
+        comment='#',
+        header=None,
+        names=header,
+        dtype={'seqid': 'object'}
     )
 
 
@@ -87,7 +92,12 @@ def _read_gtf_file(fp: str) -> ddf.DataFrame:
     ]
 
     return ddf.read_csv(
-        fp, sep='\t', comment='#', header=None, names=header, dtype={'seqname': 'object'}
+        fp,
+        sep='\t',
+        comment='#',
+        header=None,
+        names=header,
+        dtype={'seqname': 'object'}
     )
 
 
@@ -161,7 +171,7 @@ def _process_gvf(df: ddf.DataFrame) -> ddf.DataFrame:
     df['effect'] = df.veffect.str.get(0)
     ## Some transcripts will have NaN values, these are replaced by 'NA' later on
     ## in the to_csv function
-    df['transcript'] = df.veffect.str.get(3)
+    df['transcript'] = df.veffect.str.get(3).fillna('')
 
     df = df.reset_index(drop=True)
 
@@ -253,7 +263,7 @@ def _isolate_variant_metadata(df: ddf.DataFrame) -> ddf.DataFrame:
     """
 
     return df[['chromosome', 'start', 'end', 'rsid', 'observed', 'maf']].drop_duplicates(
-        subset=['rsid']
+        subset=['rsid'], split_out=150
     )
 
 
@@ -516,7 +526,7 @@ def run_complete_hg38_gene_processing_pipeline(
 
     ## Generate a deduplicated version based on genes alone
     dedup_future = dfio.save_dataset_in_background(
-        gene_df.drop_duplicates(subset=['gene_id']), output=dedup_output
+        gene_df.drop_duplicates(subset=['gene_id'], split_out=150), output=dedup_output
     )
 
     return [gene_future, dedup_future]
@@ -555,7 +565,7 @@ def run_complete_mm10_gene_processing_pipeline(
 
     ## Generate a deduplicated version based on genes alone
     dedup_future = dfio.save_dataset_in_background(
-        gene_df.drop_duplicates(subset=['gene_id']), output=dedup_output
+        gene_df.drop_duplicates(subset=['gene_id'], split_out=150), output=dedup_output
     )
 
     return [gene_future, dedup_future]

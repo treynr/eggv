@@ -30,7 +30,7 @@ from ..src import annotate
 from ..src import process
 from ..src import retrieve
 
-def run_hg38_variant_pipeline(client: Client):
+def run_hg38_variant_pipeline(client: Client, force=False, one=False):
     """
 
     :param client:
@@ -41,7 +41,7 @@ def run_hg38_variant_pipeline(client: Client):
     file_futures = []
 
     ## Retrieve the gene build from Ensembl
-    raw_genes = retrieve.run_hg38_gene_retrieval(client, force=False)
+    raw_genes = retrieve.run_hg38_gene_retrieval(client, force=force)
 
     ## Process the raw gene dataset after it's finished downloading, returns a dask DF
     ## encapsulated by a Future
@@ -57,7 +57,7 @@ def run_hg38_variant_pipeline(client: Client):
     #))
 
     ## Retrieve genomic variant builds from Ensembl
-    raw_variants = retrieve.run_hg38_variant_retrieval(client, force=False)
+    raw_variants = retrieve.run_hg38_variant_retrieval(client, force=force)
     annotations = []
     stats = []
 
@@ -93,42 +93,58 @@ def run_hg38_variant_pipeline(client: Client):
         annotations = annotate.run_annotation_pipeline(effect_df, gene_df_future.result())
 
         ## separate (inter|intra)genic annotations
-        intergenic = annotations['intergenic']
-        intragenic = annotations['intragenic']
+        #intergenic = annotations['intergenic']
+        #intragenic = annotations['intragenic']
 
         ## Save these intermediate datasets in the background while we continue
+        #file_futures.append(client.submit(
+        #    dfio.save_dataset,
+        #    client.scatter(meta_df, broadcast=True),
+        #    name=variant_path,
+        #    outdir=globe._dir_hg38_variant_meta
+        #))
+        #file_futures.append(client.submit(
+        #    dfio.save_dataset,
+        #    client.scatter(effect_df, broadcast=True),
+        #    name=variant_path,
+        #    outdir=globe._dir_hg38_variant_effect
+        #))
         file_futures.append(client.submit(
             dfio.save_dataset,
-            client.scatter(meta_df, broadcast=True),
+            client.scatter(annotations['intergenic'], broadcast=True),
             name=variant_path,
-            outdir=globe._dir_hg38_variant_meta
+            outdir=globe._dir_hg38_annotated_inter
         ))
         file_futures.append(client.submit(
             dfio.save_dataset,
-            client.scatter(effect_df, broadcast=True),
+            client.scatter(annotations['intragenic'], broadcast=True),
             name=variant_path,
-            outdir=globe._dir_hg38_variant_effect
+            outdir=globe._dir_hg38_annotated_intra
         ))
+
+        if one:
+            client.gather(file_futures)
+            file_futures = []
 
         ## Should return immediately, Future of a dict of Futures
         #annotated = annotated.result()
 
         ## Isolate the annotation and mapping summary stats
-        stats.append(annotated['stats'])
-        del annotated['stats']
+        #stats.append(annotated['stats'])
+        #del annotated['stats']
 
-        annotations.append(annotated)
+        #annotations.append(annotated)
 
     ## Combine the mapping stats and save to a file
-    stats = client.submit(annotate.combine_stats, stats)
-    stats_fp = client.submit(
-        annotate.write_annotation_stats, stats, globe._fp_hg38_annotation_stats
-    )
+    #stats = client.submit(annotate.combine_stats, stats)
+    #stats_fp = client.submit(
+    #    annotate.write_annotation_stats, stats, globe._fp_hg38_annotation_stats
+    #)
 
-    ## Compute these tasks but we don't care about gathering the results
-    fire_and_forget(stats_fp)
+    ### Compute these tasks but we don't care about gathering the results
+    #fire_and_forget(stats_fp)
 
-    return annotations
+    #return annotations
 
     ## ...and process each variant file as the retrieval step is completed.
     #for var_future in as_completed(raw_variants):
@@ -159,6 +175,7 @@ if __name__ == '__main__':
         '-f',
         '--force',
         action='store_true',
+        default=False,
         dest='force',
         help='force raw dataset retrieval and overwrite local copies if they exist'
     )
@@ -168,6 +185,21 @@ if __name__ == '__main__':
         action='store_true',
         dest='local',
         help='run the pipeline using a local cluster (HPC system, PBS/Torque is default)'
+    )
+    parser.add_argument(
+        '-p',
+        '--procs',
+        action='store',
+        dest='procs',
+        type=int,
+        help='number of processes to use for the -l/--local parameter'
+    )
+    parser.add_argument(
+        '-o',
+        '--one',
+        action='store_true',
+        dest='one',
+        help='process variant files one at a time to ease the memory burden'
     )
     parser.add_argument(
         '--verbose',
@@ -184,9 +216,12 @@ if __name__ == '__main__':
 
     if args.local:
 
+        Path('/fastscratch/s-reynot').mkdir(parents=True, exist_ok=True)
+
         cluster = LocalCluster(
-            n_workers=8,
-            processes=True
+            n_workers=args.procs,
+            processes=True,
+            local_directory='/fastscratch/s-reynot'
         )
 
     else:
@@ -264,7 +299,7 @@ if __name__ == '__main__':
 
     #processed_variants = process.run_hg38_variant_processing(client, **raw_variants)
 
-    futures = run_hg38_variant_pipeline(client)
+    futures = run_hg38_variant_pipeline(client, force=args.force, one=args.one)
 
     client.gather(futures)
 
