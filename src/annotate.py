@@ -71,8 +71,10 @@ def annotate_variants(vdf, gdf) -> ddf.DataFrame:
 
     ## Force transcript to be an empty string if it's missing, which will be the case
     ## for intergenic variants
-    vdf['transcript'] = vdf.transcript.fillna('').astype(str)
+    #vdf['transcript'] = vdf.transcript.fillna('').astype(str)
 
+    #print(vdf.head())
+    #print(gdf.head())
     ## Merge variant and gene frames based on the Ensembl transcript ID. Normally we
     ## use an inner merge but use a left merge instead so we can collect mapping
     ## statistics later on
@@ -163,8 +165,13 @@ def run_annotation_pipeline(
     client = get_client() if client is None else client
 
     annotated = annotate_variants(vdf, gdf)
-    intergenic = client.persist(isolate_intergenic_variants(annotated))
-    intragenic = client.persist(isolate_intragenic_variants(annotated))
+    intergenic = isolate_intergenic_variants(annotated).repartition(npartitions=150)
+    intergenic = client.persist(intergenic)
+
+    intragenic = isolate_intragenic_variants(annotated).repartition(npartitions=150)
+    intragenic = client.persist(intragenic)
+    #intergenic = isolate_intergenic_variants(annotated)
+    #intragenic = isolate_intragenic_variants(annotated)
 
     return {
         'intergenic': intergenic,

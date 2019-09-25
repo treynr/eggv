@@ -16,6 +16,7 @@ from functools import partial
 from pathlib import Path
 import os
 import sys
+import tempfile as tf
 
 ## sys path hack so we can import the scripts in the src/ dir.
 ## Assumes this script is being called from the parent directory
@@ -65,32 +66,37 @@ def run_hg38_variant_pipeline(client: Client, force=False, one=False):
     ## so we process them as they complete
     for _, variant_path in as_completed(raw_variants, with_results=True):
 
+        log._logger.info(f'Working on {Path(variant_path).name}')
+
         ## Run the processing step for this chromosome, don't have to submit to workers
         ## b/c this should return lazy DFs
         processed = process.run_variant_processing_pipeline(variant_path)
 
         ## Variant metadata and effects
-        meta_df = processed['metadata']
-        effect_df = processed['effects']
+        #meta_df = processed['metadata']
+        #effect_df = processed['effects']
+
+        ## Now annotate the variants using the effects and gene datasets that were
+        ## just processed. This will block until the genes have finished processing
+        ## since we can't do anything without them
+        annotations = annotate.run_annotation_pipeline(
+            processed['effects'], gene_df_future.result()
+        )
 
         ## Save these intermediate datasets in the background while we continue
         file_futures.append(client.submit(
             dfio.save_dataset,
-            client.scatter(meta_df, broadcast=True),
+            client.scatter(processed['metadata'], broadcast=True),
             name=variant_path,
             outdir=globe._dir_hg38_variant_meta
         ))
         file_futures.append(client.submit(
             dfio.save_dataset,
-            client.scatter(effect_df, broadcast=True),
+            client.scatter(processed['effects'], broadcast=True),
             name=variant_path,
             outdir=globe._dir_hg38_variant_effect
         ))
 
-        ## Now annotate the variants using the effects and gene datasets that were
-        ## just processed. This will block until the genes have finished processing
-        ## since we can't do anything without them
-        annotations = annotate.run_annotation_pipeline(effect_df, gene_df_future.result())
 
         ## separate (inter|intra)genic annotations
         #intergenic = annotations['intergenic']
@@ -125,6 +131,8 @@ def run_hg38_variant_pipeline(client: Client, force=False, one=False):
         if one:
             client.gather(file_futures)
             file_futures = []
+            del processed
+            del annotations
 
         ## Should return immediately, Future of a dict of Futures
         #annotated = annotated.result()
@@ -216,12 +224,12 @@ if __name__ == '__main__':
 
     if args.local:
 
-        Path('/fastscratch/s-reynot').mkdir(parents=True, exist_ok=True)
+        #Path('/fastscratch/s-reynot').mkdir(parents=True, exist_ok=True)
 
         cluster = LocalCluster(
             n_workers=args.procs,
             processes=True,
-            local_directory='/fastscratch/s-reynot'
+            local_directory=tf.gettempdir()
         )
 
     else:
@@ -229,17 +237,14 @@ if __name__ == '__main__':
             name='variant-etl',
             queue='batch',
             interface='ib0',
-            cores=1,
-            processes=1,
-            memory='60GB',
+            cores=4,
+            processes=4,
+            memory='80GB',
             walltime='03:00:00',
             ## If your HPC cluster doesn't have local disks (e.g. only has network
             ## storage) or the local disks are really small, uncomment this or set it
             ## to another directory
             local_directory='/tmp',
-            #resource_spec='nodes=1:ppn=1',
-            ## Cadillac doesn't like when mem is in the resource_spec string
-            #job_extra=['-l mem=60GB', '-e logs', '-o logs'],
             job_extra=['-e variation-logs', '-o variation-logs'],
             env_extra=['cd $PBS_O_WORKDIR']
         )
@@ -247,7 +252,7 @@ if __name__ == '__main__':
         Path('variation-logs').mkdir(exist_ok=True)
 
         ## Dynamically adapt to computational requirements, min/max # of jobs
-        cluster.adapt(minimum=2, maximum=45)
+        cluster.scale_up(n=40)
 
         #print(cluster.job_script())
         #exit()

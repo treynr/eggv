@@ -54,14 +54,16 @@ def _read_gvf_file(fp: str) -> ddf.DataFrame:
         'attr'
     ]
 
-    ## Sometimes type inference fails since not all chromosomes (seqid) are numbers
+    ## Sometimes type inference fails since not all chromosomes (seqid) are numbers, and
+    ## contigs are often listed too.
     return ddf.read_csv(
         fp,
         sep='\t',
         comment='#',
         header=None,
         names=header,
-        dtype={'seqid': 'object'}
+        dtype={'seqid': 'object'},
+        blocksize='120MB'
     )
 
 
@@ -116,7 +118,8 @@ def _process_gvf(df: ddf.DataFrame) -> ddf.DataFrame:
     ## Rename to chromosome
     df = df.rename(columns={'seqid': 'chromosome'})
 
-    ## Add the 'chr' prefix since that's usually pretty standard
+    ## Add the 'chr' prefix since that's usually pretty standard and in some cases,
+    ## required by other third party tools
     df['chromosome'] = 'chr' + df.chromosome.astype(str)
 
     ## Attempt to parse out a refSNP identifier from the attributes column
@@ -172,6 +175,7 @@ def _process_gvf(df: ddf.DataFrame) -> ddf.DataFrame:
     ## Some transcripts will have NaN values, these are replaced by 'NA' later on
     ## in the to_csv function
     df['transcript'] = df.veffect.str.get(3).fillna('')
+    df['transcript'] = df.transcript.astype(str)
 
     df = df.reset_index(drop=True)
 
@@ -262,6 +266,10 @@ def _isolate_variant_metadata(df: ddf.DataFrame) -> ddf.DataFrame:
     :return:
     """
 
+    ## For enormous dataframe it's often more performant (and safer memory-wise) to set
+    ## the index on a primary key (rsid in this case) and use map_partitions to map
+    ## the drop_duplicates functions. This should be okay... I think. Splits the results
+    ## into 150 separate partitions.
     return df[['chromosome', 'start', 'end', 'rsid', 'observed', 'maf']].drop_duplicates(
         subset=['rsid'], split_out=150
     )
@@ -312,11 +320,11 @@ def process_variant_effects(df: ddf.DataFrame, client: Client = None) -> ddf.Dat
 
     client = get_client() if client is None else client
 
-    ## Isolate variant metadata  from the effects
+    ## Isolate variant metadata from the effects
     effect_df = _isolate_variant_effects(df)
 
     ## Persist the processed data form on the workers
-    effect_df = client.persist(effect_df)
+    effect_df = client.persist(effect_df.repartition(npartitions=150))
 
     return effect_df
 
@@ -338,7 +346,7 @@ def process_variant_metadata(df: ddf.DataFrame, client: Client = None) -> ddf.Da
     meta_df = _isolate_variant_metadata(df)
 
     ## Persist the processed data form on the workers
-    meta_df = client.persist(meta_df)
+    meta_df = client.persist(meta_df.repartition(npartitions=150))
 
     return meta_df
 
