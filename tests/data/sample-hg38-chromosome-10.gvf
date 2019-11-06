@@ -1,0 +1,11 @@
+##gff-version 3
+##gvf-version 1.07
+##file-date 2018-11-12
+##genome-build ensembl GRCh38
+##species http://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=9606
+##feature-ontology http://song.cvs.sourceforge.net/viewvc/song/ontology/so.obo?revision=1.283
+##data-source Source=ensembl;version=95;url=http://vertebrates.ensembl.org/Homo_sapiens
+##file-version 95
+##sequence-region 10 1 133797422
+10	dbSNP	SNV	11702	11702	.	+	.	ID=11;Variant_seq=C;Dbxref=dbSNP_151:rs1308274876;evidence_values=Frequency,TOPMed;Reference_seq=G
+10	dbSNP	SNV	325000	325000	.	+	.	ID=71468;variant_peptide=0 A ENST00000434695;sift_prediction=0 tolerated_-_low_confidence 0.15 ENST00000434695;polyphen_prediction=0 benign 0 ENST00000434695;Variant_effect=intron_variant 0 primary_transcript ENST00000381496,intron_variant 0 primary_transcript ENST00000634311,intron_variant 0 primary_transcript ENST00000280886,missense_variant 0 mRNA ENST00000434695;Reference_seq=T;Variant_seq=G;reference_peptide=E;ancestral_allele=T;Dbxref=dbSNP_151:rs1486292194;evidence_values=Frequency,gnomAD
