@@ -11,160 +11,142 @@ import logging
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 
-## Variables ##
+class Globals(object):
+    """
+    Singleton Globals class for representing the species specific global variables,
+    mostly directories and filepaths.
+    """
 
-_var_human_chromosomes = [str(c) for c in range(1, 23)] + ['X', 'Y']
-_var_mouse_chromosomes = [str(c) for c in range(1, 20)] + ['X', 'Y']
+    _instance = None
+    build = None
 
+    def __new__(cls, *args, **kwargs):
 
-## URLs ##
+        if cls._instance is None:
+            cls._instance = super(Globals, cls).__new__(cls)
 
-## Ensembl variation build v. 95
-## For humans, Ensembl stores variants separately per chromosome, so this URL must
-## be substituted w/ the chromosome
-_url_hg38_variation = 'http://ftp.ensembl.org/pub/release-95/variation/gvf/homo_sapiens/homo_sapiens_incl_consequences-chr{}.gvf.gz'
-_url_mm10_variation = 'http://ftp.ensembl.org/pub/release-95/variation/gvf/mus_musculus/mus_musculus_incl_consequences.gvf.gz'
+        return cls._instance
 
-## Ensembl gene build v. 95
-_url_hg38_gene = 'http://ftp.ensembl.org/pub/release-95/gtf/homo_sapiens/Homo_sapiens.GRCh38.95.gtf.gz'
-_url_mm10_gene = 'http://ftp.ensembl.org/pub/release-95/gtf/mus_musculus/Mus_musculus.GRCm38.95.gtf.gz'
+    def __init__(self, datadir: str = 'data/', build: str = 'hg38'):
 
+        if self.build is None:
+            self.base_dir = Path(datadir)
+            self.build = build
 
-## Output directories ##
+            self.format_paths()
+            self.create_data_directories()
 
-## Data directories
-_dir_data = 'data/'
-_dir_stats = Path(_dir_data, 'stats').as_posix()
+            ## URLs
 
-## Variant datasets
-_dir_variant = Path(_dir_data, 'variants').as_posix()
+            ## Ensembl variation build v. 95
+            ## For humans, Ensembl stores variants separately per chromosome, so this URL must
+            ## be substituted w/ the chromosome
+            self.url_hg38_variation = 'http://ftp.ensembl.org/pub/release-95/variation/gvf/homo_sapiens/homo_sapiens_incl_consequences-chr{}.gvf.gz'
+            self.url_mm10_variation = 'http://ftp.ensembl.org/pub/release-95/variation/gvf/mus_musculus/mus_musculus_incl_consequences.gvf.gz'
 
-_dir_hg38_variant = Path(_dir_variant, 'hg38').as_posix()
-_dir_hg38_variant_raw = Path(_dir_hg38_variant, 'raw').as_posix()
-_dir_hg38_variant_effect = Path(_dir_hg38_variant, 'effects').as_posix()
-_dir_hg38_variant_meta = Path(_dir_hg38_variant, 'meta').as_posix()
+            ## Ensembl gene build v. 95
+            self.url_hg38_gene = 'http://ftp.ensembl.org/pub/release-95/gtf/homo_sapiens/Homo_sapiens.GRCh38.95.gtf.gz'
+            self.url_mm10_gene = 'http://ftp.ensembl.org/pub/release-95/gtf/mus_musculus/Mus_musculus.GRCm38.95.gtf.gz'
 
-_dir_mm10_variant = Path(_dir_variant, 'mm10').as_posix()
-_dir_mm10_variant_raw = Path(_dir_mm10_variant, 'raw').as_posix()
-_dir_mm10_variant_effect = Path(_dir_mm10_variant, 'effects').as_posix()
-_dir_mm10_variant_meta = Path(_dir_mm10_variant, 'meta').as_posix()
+            ## Variables
+            self.var_human_chromosomes = [str(c) for c in range(1, 23)] + ['X', 'Y']
+            self.var_mouse_chromosomes = [str(c) for c in range(1, 20)] + ['X', 'Y']
 
-## Gene datasets
-_dir_gene = Path(_dir_data, 'genes').as_posix()
+    def format_paths(self):
+        """
+        Format directories and filepaths.
+        """
 
-_dir_hg38_gene = Path(_dir_gene, 'hg38').as_posix()
-_dir_hg38_gene_raw = Path(_dir_hg38_gene, 'raw').as_posix()
-_dir_hg38_gene_meta = Path(_dir_hg38_gene, 'meta').as_posix()
+        ## Generate filepaths using the given base data directory and build
+        self.dir_data = Path(self.base_dir)
 
-_dir_mm10_gene = Path(_dir_gene, 'mm10').as_posix()
-_dir_mm10_gene_raw = Path(_dir_mm10_gene, 'raw').as_posix()
-_dir_mm10_gene_meta = Path(_dir_mm10_gene, 'meta').as_posix()
+        ## Variant directories
+        self.dir_variant = Path(self.dir_data, 'variants', self.build)
+        self.dir_variant_raw = Path(self.dir_variant, 'raw')
+        self.dir_variant_effects = Path(self.dir_variant, 'effects')
+        self.dir_variant_meta = Path(self.dir_variant, 'meta')
 
-## Annotated variant datasets
-_dir_hg38_annotated = Path(_dir_hg38_variant, 'annotated').as_posix()
-_dir_hg38_annotated_inter = Path(_dir_hg38_annotated, 'intergenic').as_posix()
-_dir_hg38_annotated_intra = Path(_dir_hg38_annotated, 'intragenic').as_posix()
+        ## Gene directories
+        self.dir_gene = Path(self.dir_data, 'genes', self.build)
+        self.dir_gene_raw = Path(self.dir_gene, 'raw')
+        self.dir_gene_meta = Path(self.dir_gene, 'meta')
 
-_dir_mm10_annotated = Path(_dir_mm10_variant, 'annotated').as_posix()
+        ## Annotation directories
+        self.dir_annotated = Path(self.dir_variant, 'annotated')
+        self.dir_annotated_inter = Path(self.dir_annotated, 'intergenic')
+        self.dir_annotated_intra = Path(self.dir_annotated, 'intragenic')
 
-## Neo4j formatted datasets
-_dir_hg38_neo_variant = Path(_dir_hg38_variant, 'neo4j').as_posix()
-_dir_hg38_neo_gene = Path(_dir_hg38_gene, 'neo4j').as_posix()
-_dir_hg38_neo_variant_meta = Path(_dir_hg38_neo_variant, 'meta').as_posix()
-_dir_hg38_neo_variant_rel = Path(_dir_hg38_neo_variant, 'relations').as_posix()
+        ## Output filepaths
+        ## Genes
+        self.fp_gene_compressed = Path(
+            self.dir_gene_raw, f'{self.build}-gene-build.gtf.gz'
+        )
+        self.fp_gene_raw = Path(self.dir_gene_raw, f'{self.build}-gene-build.gtf')
+        self.fp_gene_meta = Path(self.dir_gene_meta, f'{self.build}-gene-build.tsv')
+        self.fp_gene_dedup = Path(
+            self.dir_gene_meta, f'{self.build}-gene-build-dedup.tsv'
+        )
 
-_dir_mm10_neo_variant = Path(_dir_mm10_variant, 'neo4j').as_posix()
-_dir_mm10_neo_gene = Path(_dir_mm10_gene, 'neo4j').as_posix()
-_dir_mm10_neo_variant_meta = Path(_dir_mm10_neo_variant, 'meta').as_posix()
-_dir_mm10_neo_variant_rel = Path(_dir_mm10_neo_variant, 'relations').as_posix()
+        ## Variants (most of this is only for mouse since human variants are split
+        ## up by chromosome
+        self.fp_variant_compressed = Path(
+            self.dir_variant_raw, f'{self.build}-variant-build.gvf.gz'
+        )
+        self.fp_variant_raw = Path(
+            self.dir_variant_raw, f'{self.build}-variant-build.gvf'
+        )
+        self.fp_variant_effects = Path(
+            self.dir_variant_effects, f'{self.build}-variant-effects.tsv'
+        )
+        self.fp_variant_meta = Path(
+            self.dir_variant_meta, f'{self.build}-variant-metadata.tsv'
+        )
+        self.fp_annotated_inter = Path(
+            self.dir_annotated_inter, f'{self.build}-intergenic-variants.tsv'
+        )
+        self.fp_annotated_intra = Path(
+            self.dir_annotated_intra, f'{self.build}-intragenic-variants.tsv'
+        )
 
+        self.create_data_directories()
 
-## Output files ##
+    def create_data_directories(self):
+        """
+        Generate the data directories.
+        """
 
-_fp_hg38_gene_compressed = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf.gz').as_posix()
-_fp_hg38_gene_raw = Path(_dir_hg38_gene_raw, 'hg38-gene-build.gtf').as_posix()
-_fp_hg38_gene_meta = Path(_dir_hg38_gene_meta, 'hg38-gene-build.gtf').as_posix()
-_fp_hg38_gene_dedup = Path(
-    _dir_hg38_gene_meta, 'hg38-gene-build-deduplicated.gtf'
-).as_posix()
+        try:
+            self.dir_variant_raw.mkdir(exist_ok=True, parents=True)
+            self.dir_variant_effects.mkdir(exist_ok=True, parents=True)
+            self.dir_variant_meta.mkdir(exist_ok=True, parents=True)
 
-_fp_mm10_gene_compressed = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf.gz').as_posix()
-_fp_mm10_gene_raw = Path(_dir_mm10_gene_raw, 'mm10-gene-build.gtf').as_posix()
-_fp_mm10_gene_meta = Path(_dir_mm10_gene_meta, 'mm10-gene-build.gtf').as_posix()
-_fp_mm10_gene_dedup = Path(
-    _dir_mm10_gene_meta, 'mm10-gene-build-deduplicated.gtf'
-).as_posix()
+            self.dir_gene_raw.mkdir(exist_ok=True, parents=True)
+            self.dir_gene_meta.mkdir(exist_ok=True, parents=True)
 
-_fp_mm10_variant_compressed = Path(
-    _dir_mm10_variant_raw, 'mm10-variant-build.gvf.gz'
-).as_posix()
-_fp_mm10_variant_raw = Path(_dir_mm10_variant_raw, 'mm10-variant-build.gvf').as_posix()
-_fp_mm10_variant_effect = Path(
-    _dir_mm10_variant_effect, 'mm10-variant-build.tsv'
-).as_posix()
-_fp_mm10_variant_meta = Path(
-    _dir_mm10_variant_meta, 'mm10-variant-build-metadata.tsv'
-).as_posix()
+            self.dir_annotated_inter.mkdir(exist_ok=True, parents=True)
+            self.dir_annotated_intra.mkdir(exist_ok=True, parents=True)
 
-_fp_mm10_intergenic = Path(_dir_mm10_annotated, 'mm10-intergenic-variants.tsv').as_posix()
-_fp_mm10_intragenic = Path(_dir_mm10_annotated, 'mm10-intragenic-variants.tsv').as_posix()
+        except OSError as e:
+            logging.getLogger(__name__).error('Could not make data directories: %s', e)
+            exit(1)
 
-_fp_hg38_annotation_stats = Path(
-    _dir_stats, 'hg38-variant-annotation-stats.tsv'
-).as_posix()
-_fp_mm10_annotation_stats = Path(
-    _dir_stats, 'mm10-variant-annotation-stats.tsv'
-).as_posix()
+    def reinitialize(self, base_dir=None, build=None):
+        """
+        Reformat and recreate filepaths using new base directory and/or build.
+        """
 
-## Neo4j outputs
-_fp_hg38_neo_gene = Path(_dir_hg38_neo_gene, 'hg38-gene-build.tsv').as_posix()
-_fp_hg38_neo_gene_head = Path(_dir_hg38_neo_gene, 'hg38-gene-head.tsv').as_posix()
-_fp_hg38_neo_variant_meta_head = Path(
-    _dir_hg38_neo_variant_meta, 'hg38-variant-head.tsv'
-).as_posix()
-_fp_hg38_neo_variant_rel_head = Path(
-    _dir_hg38_neo_variant_rel, 'hg38-variant-relations-head.tsv'
-).as_posix()
+        reinit = False
 
-_fp_mm10_neo_gene = Path(_dir_mm10_neo_gene, 'mm10-gene-build.tsv').as_posix()
-_fp_mm10_neo_gene_head = Path(_dir_mm10_neo_gene, 'mm10-gene-head.tsv').as_posix()
-_fp_mm10_neo_variant_meta = Path(
-    _dir_mm10_neo_variant_meta, 'mm10-variant-build-metadata.tsv'
-).as_posix()
-_fp_mm10_neo_variant_meta_head = Path(
-    _dir_mm10_neo_variant_meta, 'mm10-variant-head.tsv'
-).as_posix()
-_fp_mm10_neo_variant_rel = Path(
-    _dir_mm10_neo_variant_rel, 'mm10-variant-relations.tsv'
-).as_posix()
-_fp_mm10_neo_variant_rel_head = Path(
-    _dir_mm10_neo_variant_rel, 'mm10-variant-relations-head.tsv'
-).as_posix()
+        if base_dir and self.base_dir != base_dir:
+            self.base_dir = base_dir
+            reinit = True
 
-## In case these don't exist
-try:
-    Path(_dir_hg38_variant_raw).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_variant_effect).mkdir(parents=True, exist_ok=True)
-    Path(_dir_mm10_variant_raw).mkdir(parents=True, exist_ok=True)
-    Path(_dir_mm10_variant_effect).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_variant_meta).mkdir(parents=True, exist_ok=True)
-    Path(_dir_mm10_variant_meta).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_gene_raw).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_gene_meta).mkdir(parents=True, exist_ok=True)
-    Path(_dir_mm10_gene_raw).mkdir(parents=True, exist_ok=True)
-    Path(_dir_mm10_gene_meta).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_annotated).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_annotated_inter).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_annotated_intra).mkdir(parents=True, exist_ok=True)
-    Path(_dir_mm10_annotated).mkdir(parents=True, exist_ok=True)
+        if build and self.build != build:
+            self.build = build
+            reinit = True
 
-    Path(_dir_hg38_neo_gene).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_neo_variant_meta).mkdir(parents=True, exist_ok=True)
-    Path(_dir_hg38_neo_variant_rel).mkdir(parents=True, exist_ok=True)
-    Path(_dir_mm10_neo_gene).mkdir(parents=True, exist_ok=True)
-    Path(_dir_mm10_neo_variant_meta).mkdir(parents=True, exist_ok=True)
-    Path(_dir_mm10_neo_variant_rel).mkdir(parents=True, exist_ok=True)
+        if reinit:
+            self.format_paths()
+            self.create_data_directories()
 
-except OSError as e:
-    logging.getLogger(__name__).error('Could not make data directories: %s', e)
-
+        return self._instance

@@ -6,25 +6,14 @@
 ##       by Ensembl.
 
 from dask.distributed import Client
-from dask.distributed import Future
 from dask.distributed import get_client
-from dask.distributed import secede
-from dask.distributed import LocalCluster
-from dask_jobqueue import PBSCluster
-from functools import partial
 from glob import glob
-from pathlib import Path
 from typing import Dict
-from typing import List
 import dask.dataframe as ddf
 import logging
-import numpy as np
-import pandas as pd
-import shutil
-import tempfile as tf
 
 from . import dfio
-from . import globe
+from .globe import Globals
 from . import log
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
@@ -42,7 +31,9 @@ def _read_processed_variants(fp: str) -> ddf.DataFrame:
         a dask dataframe
     """
 
-    return ddf.read_csv(fp, sep='\t', comment='#', dtype={'transcript': 'object'})
+    return ddf.read_csv(
+        fp, sep='\t', comment='#', dtype={'transcript': 'object'}, blocksize='150MB'
+    )
 
 
 def _read_processed_genes(fp: str) -> ddf.DataFrame:
@@ -60,21 +51,18 @@ def _read_processed_genes(fp: str) -> ddf.DataFrame:
     return ddf.read_csv(fp, sep='\t', comment='#')
 
 
-def annotate_variants(vdf, gdf) -> ddf.DataFrame:
+def annotate_variants(vdf: ddf.DataFrame, gdf: ddf.DataFrame) -> ddf.DataFrame:
     """
     Annotate variants to genes based on variant effects provided by Ensembl.
 
-    :param vdf:
-    :param gdf:
-    :return:
+    arguments
+        vdf: dask dataframe containing processed variants
+        gdf: dask dataframe containing processed genes
+
+    returns
+        a dataframe containing annotated variants
     """
 
-    ## Force transcript to be an empty string if it's missing, which will be the case
-    ## for intergenic variants
-    #vdf['transcript'] = vdf.transcript.fillna('').astype(str)
-
-    #print(vdf.head())
-    #print(gdf.head())
     ## Merge variant and gene frames based on the Ensembl transcript ID. Normally we
     ## use an inner merge but use a left merge instead so we can collect mapping
     ## statistics later on
@@ -84,7 +72,7 @@ def annotate_variants(vdf, gdf) -> ddf.DataFrame:
         left_on='transcript',
         right_on='transcript_id',
         suffixes=('_l', '_r'),
-        npartitions=150
+        npartitions=100
     )
 
     ## Rename some columns
@@ -105,13 +93,16 @@ def annotate_variants(vdf, gdf) -> ddf.DataFrame:
     ]]
 
 
-def isolate_intergenic_variants(df) -> ddf.DataFrame:
+def isolate_intergenic_variants(df: ddf.DataFrame) -> ddf.DataFrame:
     """
     Return a dataframe containing only intergenic variant annotations.
+    Removes columns that are no longer necessary.
 
-    :param vdf:
-    :param gdf:
-    :return:
+    arguments
+        df: a dask dataframe containing annotated variants
+
+    returns
+        a dataframe containing only intergenic variants
     """
 
     keep = ['rsid', 'variant_effect']
@@ -130,9 +121,11 @@ def isolate_intragenic_variants(df) -> ddf.DataFrame:
     Return a dataframe containing only intergenic variants. Also removes duplicate rows
     based on rsid, variant effect, and gene ID triples.
 
-    :param vdf:
-    :param gdf:
-    :return:
+    arguments
+        df: a dask dataframe containing annotated variants
+
+    returns
+        a dataframe containing only intragenic variants
     """
 
     keep = ['rsid', 'variant_effect', 'gene_id', 'gene_name', 'gene_biotype']
@@ -144,15 +137,13 @@ def isolate_intragenic_variants(df) -> ddf.DataFrame:
     return (
         df[(~is_intergenic) & (df.gene_id.notnull())]
             .loc[:, keep]
-            .drop_duplicates(subset=['rsid', 'variant_effect', 'gene_id'], split_out=150)
+            .drop_duplicates(subset=['rsid', 'variant_effect', 'gene_id'], split_out=100)
     )
 
 
 def run_annotation_pipeline(
     vdf: ddf.DataFrame,
     gdf: ddf.DataFrame,
-    client: Client = None,
-    **kwargs
 ) -> Dict[str, ddf.DataFrame]:
     """
 
@@ -162,16 +153,10 @@ def run_annotation_pipeline(
     :return:
     """
 
-    client = get_client() if client is None else client
-
     annotated = annotate_variants(vdf, gdf)
-    intergenic = isolate_intergenic_variants(annotated).repartition(npartitions=150)
-    intergenic = client.persist(intergenic)
+    intergenic = isolate_intergenic_variants(annotated)
 
-    intragenic = isolate_intragenic_variants(annotated).repartition(npartitions=150)
-    intragenic = client.persist(intragenic)
-    #intergenic = isolate_intergenic_variants(annotated)
-    #intragenic = isolate_intragenic_variants(annotated)
+    intragenic = isolate_intragenic_variants(annotated)
 
     return {
         'intergenic': intergenic,
@@ -180,10 +165,10 @@ def run_annotation_pipeline(
 
 
 def run_complete_hg38_annotation_pipeline(
-    variant_dir: str = globe._dir_hg38_variant_effect,
-    gene_fp: str = globe._fp_hg38_gene_meta,
-    intergenic_dir: str = globe._dir_hg38_annotated_inter,
-    intragenic_dir: str = globe._dir_hg38_annotated_intra,
+    variant_dir: str = None,
+    gene_fp: str = None,
+    intergenic_dir: str = None,
+    intragenic_dir: str = None,
     client: Client = None
 ):
     """
@@ -193,6 +178,18 @@ def run_complete_hg38_annotation_pipeline(
     :param client:
     :return:
     """
+
+    if variant_dir is None:
+        variant_dir = Globals().reinitialize(build='hg38').dir_variant_effects
+
+    if gene_fp is None:
+        gene_fp = Globals().reinitialize(build='hg38').fp_gene_meta
+
+    if intergenic_dir is None:
+        intergenic_dir = Globals().reinitialize(build='hg38').dir_annotated_inter
+
+    if intragenic_dir is None:
+        intragenic_dir = Globals().reinitialize(build='hg38').dir_annotated_intra
 
     client = get_client() if client is None else client
 
@@ -213,22 +210,15 @@ def run_complete_hg38_annotation_pipeline(
         variant_df = _read_processed_variants(fp)
 
         ## Annotate
-        annotations = run_annotation_pipeline(variant_df, gene_df, client=client)
+        annotations = run_annotation_pipeline(variant_df, gene_df)
 
         intergenic = annotations['intergenic']
         intragenic = annotations['intragenic']
 
-        ## Scatter annotations prior to saving
-        #intergenic = client.scatter(annotations['intergenic'])
-        #intragenic = client.scatter(annotations['intragenic'])
+        intergenic = client.persist(intergenic)
+        intragenic = client.persist(intragenic)
 
         ## Save to files
-        #inter_future = client.submit(
-        #    dfio.save_dataset, intergenic, name=fp, outdir=intergenic_dir
-        #)
-        #intra_future = client.submit(
-        #    dfio.save_dataset, intragenic, name=fp, outdir=intragenic_dir
-        #)
         inter_future = dfio.save_dataset_in_background(
             intergenic, name=fp, outdir=intergenic_dir
         )
@@ -245,10 +235,10 @@ def run_complete_hg38_annotation_pipeline(
 
 
 def run_complete_mm10_annotation_pipeline(
-    variant_fp: str = globe._fp_mm10_variant_effect,
-    gene_fp: str = globe._fp_mm10_gene_meta,
-    intergenic_fp: str = globe._fp_mm10_intergenic,
-    intragenic_fp: str = globe._fp_mm10_intragenic,
+    variant_fp: str = None,
+    gene_fp: str = None,
+    intergenic_fp: str = None,
+    intragenic_fp: str = None,
     client: Client = None
 ):
     """
@@ -258,6 +248,18 @@ def run_complete_mm10_annotation_pipeline(
     :param client:
     :return:
     """
+
+    if variant_fp is None:
+        variant_fp = Globals().reinitialize(build='mm10').fp_variant_effects
+
+    if gene_fp is None:
+        gene_fp = Globals().reinitialize(build='mm10').fp_gene_meta
+
+    if intergenic_fp is None:
+        intergenic_fp = Globals().reinitialize(build='mm10').fp_annotated_inter
+
+    if intragenic_fp is None:
+        intragenic_fp = Globals().reinitialize(build='mm10').fp_annotated_intra
 
     client = get_client() if client is None else client
 
@@ -271,7 +273,7 @@ def run_complete_mm10_annotation_pipeline(
     variant_df = _read_processed_variants(variant_fp)
 
     ## Annotate
-    annotations = run_annotation_pipeline(variant_df, gene_df, client=client)
+    annotations = run_annotation_pipeline(variant_df, gene_df)
 
     ## Scatter annotations prior to saving
     intergenic = client.scatter(annotations['intergenic'])
@@ -291,151 +293,4 @@ def run_complete_mm10_annotation_pipeline(
     })
 
     return futures
-
-
-if __name__ == '__main__':
-
-    log._initialize_logging(verbose=True)
-
-    #client = Client(LocalCluster(
-    #    n_workers=6,
-    #    processes=True,
-    #    local_dir='/var/tmp',
-    #))
-    ## Takes around 25min. to do all human chromosomes using 30 workers
-    cluster = PBSCluster(
-        name='variant-etl',
-        queue='batch',
-        interface='ib0',
-        cores=2,
-        processes=2,
-        memory='60GB',
-        #cores=1,
-        #processes=1,
-        #memory='45GB',
-        walltime='00:50:00',
-        local_directory='/tmp',
-        job_extra=['-e logs', '-o logs'],
-        env_extra=['cd $PBS_O_WORKDIR']
-    )
-
-    #cluster.adapt(minimum=10, maximum=45)
-
-    ## n submits jobs based on the cores we asked for, since asking for 2 cores per job
-    ## this will submit 20 jobs (40 / 2). Each job has 90GB of memory, and since we
-    ## specify two processes (1 core per process), each process has 45GB of memory.
-    cluster.scale_up(n=60)
-
-    client = Client(cluster)
-
-    init_logging_partial = partial(log._initialize_logging, verbose=True)
-
-    client.register_worker_callbacks(setup=init_logging_partial)
-
-    #mm10_futures = run_mm10_annotations(client)
-    #client.gather(mm10_futures)
-
-    hg38_futures = run_complete_hg38_annotation_pipeline(client=client)
-    client.gather(hg38_futures)
-
-    ## Init logging on each worker
-    #client.run(log._initialize_logging, verbose=True)
-
-    #hg38_futures = run_hg38_variant_processing2(client)
-    #hg38_futures = run_hg38_variant_processing3(client)
-    #df = read_gvf_file('data/variant/hg38/raw/chromosome-21.vcf')
-    #df = process_gvf(df)
-
-    #log._logger.info('Processing and saving variants')
-
-    #tempdir = save_variants(df)
-
-    #log._logger.info('Consolidating variants')
-
-    #consolidate_saved_variants(tempdir, 'data/variant/hg38/processed/chromosome-21.vcf')
-    #client.gather(hg38_futures)
-
-    log._logger.info('Done')
-    #human_futures = run_human_feature_processing(client)
-    #mouse_futures = run_mouse_feature_processing(client)
-
-    #client.gather([human_futures, mouse_futures])
-
-    client.close()
-
-## this is for later
-#def combine_stats(dfs: List[Future]) -> pd.DataFrame:
-#    """
-#    """
-#
-#    client = get_client()
-#
-#    dfs = client.gather(dfs)
-#
-#    return pd.concat(dfs, axis=0, sort=True)
-#
-#def write_annotation_stats(df, output) -> str:
-#    """
-#
-#    """
-#
-#    df.to_csv(output, sep='\t')
-#
-#    return output
-#
-#
-#def collect_annotation_stats(df) -> ddf.DataFrame:
-#    """
-#
-#    :param df:
-#    :return:
-#    """
-#
-#    ## Conditions
-#    is_intergenic = df.variant_effect == 'intergenic'
-#    is_not_intergenic = df.variant_effect != 'intergenic'
-#    is_mapped = df.gene_id.notnull()
-#    is_not_mapped = df.gene_id.isnull()
-#
-#    ## Intragenic variants successfully mapped to genes
-#    intra_mapped = (
-#        df[is_not_intergenic & is_mapped].loc[:, ['chromosome', 'rsid']]
-#            .drop_duplicates()
-#            .groupby('chromosome')
-#            .count()
-#            .compute()
-#    )
-#
-#    ## Intragenic variants that failed to map to a gene (should be few or none)
-#    intra_failed = (
-#        df[is_not_intergenic & is_not_mapped].loc[:, ['chromosome', 'rsid']]
-#            .drop_duplicates()
-#            .groupby('chromosome')
-#            .count()
-#            .compute()
-#    )
-#
-#    ## Intergenic variants
-#    intergenic = (
-#        df[is_intergenic].loc[:, ['chromosome', 'rsid']]
-#            .drop_duplicates()
-#            .groupby('chromosome')
-#            .count()
-#            .compute()
-#    )
-#
-#    stats = pd.concat(
-#        [intra_mapped, intra_failed, intergenic],
-#        axis=1,
-#        sort=True
-#    ).fillna(0)
-#
-#    ## Rename columns and the index
-#    stats.columns = ['intra_mapped', 'intra_failed', 'intergenic']
-#    stats.index.name = 'chromosome'
-#
-#    ## Convert any remaining floats to ints
-#    stats = stats.astype(np.int64)
-#
-#    return stats
 

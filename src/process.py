@@ -6,12 +6,7 @@
 
 from dask.distributed import Client
 from dask.distributed import Future
-from dask.distributed import LocalCluster
 from dask.distributed import get_client
-from dask.distributed import fire_and_forget
-from dask.distributed import secede
-from dask_jobqueue import PBSCluster
-from functools import partial
 from glob import glob
 from pathlib import Path
 from typing import Dict
@@ -19,11 +14,10 @@ from typing import List
 import dask.dataframe as ddf
 import logging
 import numpy as np
-import pandas as pd
 
 from . import dfio
-from . import globe
 from . import log
+from .globe import Globals
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
@@ -63,7 +57,7 @@ def _read_gvf_file(fp: str) -> ddf.DataFrame:
         header=None,
         names=header,
         dtype={'seqid': 'object'},
-        blocksize='120MB'
+        blocksize='150MB'
     )
 
 
@@ -110,6 +104,11 @@ def _process_gvf(df: ddf.DataFrame) -> ddf.DataFrame:
     reference alleles, extracts the MAF, parses out variant effects and adds new rows
     for each effect + modified transcript.
 
+    arguments
+        df: unprocessed dask dataframe
+
+    returns
+        a processed dataframe
     """
 
     ## Only keep fields we need
@@ -149,35 +148,31 @@ def _process_gvf(df: ddf.DataFrame) -> ddf.DataFrame:
 
     ## Most things don't have a MAF
     df['maf'] = df.maf.fillna(value=0.0)
+    df['maf'] = df.maf.astype(np.float32)
 
     ## Attempt to extract the variant effect, of which there may be several. The variant
     ## effect attribute looks something like this:
     ## Variant_effect=non_coding_transcript_variant 0 ncRNA ENST00000566940,
     ## intron_variant 0 primary_transcript ENST00000566940,
     ## non_coding_transcript_variant 1 ncRNA ENST00000566940,
-    df['veffect'] = df.attr.str.extract(r'Variant_effect=(.+?);', expand=False)
+    df['effect'] = df.attr.str.extract(r'Variant_effect=(.+?);', expand=False)
+    df['effect'] = df.effect.fillna('intergenic')
 
     ## Each variant can have multiple effects, so we split the variant effects into their
     ## own individual rows while still retaining the original variant metadata per new row
-    df = df.map_partitions(
-        lambda d: d.drop('veffect', axis=1).join(
-            d.veffect.str.split(',', expand=True)
-                .stack()
-                .reset_index(drop=True, level=1)
-                .rename('veffect')
-        )
-    )
+    df = df.assign(effect=df.effect.str.split(',')).explode('effect')
 
     ## Fill in missing effects and split to separate effects/transcripts
-    df['veffect'] = df.veffect.fillna('intergenic')
-    df['veffect'] = df.veffect.str.split(' ')
-    df['effect'] = df.veffect.str.get(0)
+    df['effect'] = df.effect.fillna('intergenic')
+    df['effect'] = df.effect.str.split(' ')
+
     ## Some transcripts will have NaN values, these are replaced by 'NA' later on
     ## in the to_csv function
-    df['transcript'] = df.veffect.str.get(3).fillna('')
+    df['transcript'] = df.effect.str.get(3).fillna('')
     df['transcript'] = df.transcript.astype(str)
 
-    df = df.reset_index(drop=True)
+    ## Replace with the actual effect
+    df['effect'] = df.effect.str.get(0)
 
     ## Keep only things we need
     return df[[
@@ -185,7 +180,7 @@ def _process_gvf(df: ddf.DataFrame) -> ddf.DataFrame:
     ]]
 
 
-def _process_gtf(df: ddf.DataFrame) -> pd.DataFrame:
+def _process_gtf(df: ddf.DataFrame) -> ddf.DataFrame:
     """
     Process and format GTF fields into an intermediate data representation.
     Filters out fields that are not necessary (for our purposes), extracts variant and
@@ -193,10 +188,10 @@ def _process_gtf(df: ddf.DataFrame) -> pd.DataFrame:
     for each effect + transcript.
 
     arguments
-        fp: filepath to the Ensembl gene build in GTF format.
+        df: unprocessed dataframe
 
     returns
-        a pandas dataframe
+        a processed dataframe
     """
 
     ## Remove anything that isn't a transcript feature, since we'll be using transcripts
@@ -238,12 +233,17 @@ def _process_gtf(df: ddf.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _process_genes(input: str, client: Client = None) -> ddf.DataFrame:
+def _process_genes(input: str) -> ddf.DataFrame:
     """
-    28 min.
-    """
+    Read and process an input file containing an organism's Ensembl gene build.
+    Persists the processed dask dataframe onto the dask cluster.
 
-    client = get_client() if client is None else client
+    arguments
+        input: input filepath to the gene build
+
+    returns
+        a dataframe
+    """
 
     ## Read the GTF file and annotate header fields
     raw_df = _read_gtf_file(input)
@@ -251,45 +251,12 @@ def _process_genes(input: str, client: Client = None) -> ddf.DataFrame:
     ## Completely process the given GTF file into a format suitable for our needs
     processed_df = _process_gtf(raw_df)
 
-    ## Persist the processed dask dataframe on the workers
-    processed_df = client.persist(processed_df)
-
     return processed_df
-
-
-def _isolate_variant_metadata(df: ddf.DataFrame) -> ddf.DataFrame:
-    """
-    Process the intermediate variant format into one that only keeps individual
-    variant metadata.
-
-    :param df:
-    :return:
-    """
-
-    ## For enormous dataframe it's often more performant (and safer memory-wise) to set
-    ## the index on a primary key (rsid in this case) and use map_partitions to map
-    ## the drop_duplicates functions. This should be okay... I think. Splits the results
-    ## into 150 separate partitions.
-    return df[['chromosome', 'start', 'end', 'rsid', 'observed', 'maf']].drop_duplicates(
-        subset=['rsid'], split_out=150
-    )
-
-
-def _isolate_variant_effects(df: ddf.DataFrame) -> ddf.DataFrame:
-    """
-    Process the intermediate variant format into one that only keeps variant effects and
-    the transcript modifications. This is used later on to annotate genes to variants.
-
-    :param df:
-    :return:
-    """
-
-    return df[['rsid', 'effect', 'transcript']]
 
 
 def _process_variants(fp: str) -> ddf.DataFrame:
     """
-    Read and process variants into an intermediate format suitable for our needs.
+    Read and process an input file containing an organism's Ensembl variant build.
 
     arguments
         fp: filepath to a variant (GVF) file
@@ -305,50 +272,47 @@ def _process_variants(fp: str) -> ddf.DataFrame:
     return _process_gvf(raw_df)
 
 
-def process_variant_effects(df: ddf.DataFrame, client: Client = None) -> ddf.DataFrame:
+def isolate_variant_effects(df: ddf.DataFrame, npartitions: int = 350) -> ddf.DataFrame:
     """
-    Process and isolate the effects associated with individual variants. The
-    effects can be used to annotate intragenic variants to their respective genes later
-    on.
+    Given a dataframe of processed variants, isolate and retain variant effects altered
+    transcripts.
 
     arguments
-    :param df:
-    :param client:
+        df:          dataframe containing processed variant data
+        npartitions: number of partitions to split the dataframe into after removing
+                     duplicates. A partition of 1 is NOT recommended for large datasets.
 
     returns
+        a dataframe
     """
 
-    client = get_client() if client is None else client
-
-    ## Isolate variant metadata from the effects
-    effect_df = _isolate_variant_effects(df)
-
-    ## Persist the processed data form on the workers
-    effect_df = client.persist(effect_df.repartition(npartitions=150))
-
-    return effect_df
+    ## The duplicates should only be present within partitions since we haven't
+    ## repartitioned yet and variant effects were added per partition
+    return (
+        df[['rsid', 'effect', 'transcript']]
+            .map_partitions(lambda d: d.drop_duplicates())
+    )
 
 
-def process_variant_metadata(df: ddf.DataFrame, client: Client = None) -> ddf.DataFrame:
+def isolate_variant_metadata(df: ddf.DataFrame, npartitions: int = 350) -> ddf.DataFrame:
     """
-    Process and isolate the metadata associated with individual variants.
+    Given a dataframe of processed variants, isolate and retain variant metadata.
 
     arguments
-    :param df:
-    :param client:
+        df:          dataframe containing processed variant data
+        npartitions: number of partitions to split the dataframe into after removing
+                     duplicates. A partition of 1 is NOT recommended for large datasets.
 
     returns
+        a dataframe
     """
 
-    client = get_client() if client is None else client
-
-    ## Isolate variant metadata  from the effects
-    meta_df = _isolate_variant_metadata(df)
-
-    ## Persist the processed data form on the workers
-    meta_df = client.persist(meta_df.repartition(npartitions=150))
-
-    return meta_df
+    ## The duplicates should only be present within partitions since we haven't
+    ## repartitioned yet and variant effects were added per partition
+    return (
+        df[['chromosome', 'start', 'end', 'rsid', 'observed', 'maf']]
+            .map_partitions(lambda d: d.drop_duplicates(subset='rsid'))
+    )
 
 
 def run_variant_processing_pipeline(
@@ -356,28 +320,29 @@ def run_variant_processing_pipeline(
     client: Client = None
 ) -> Dict[str, ddf.DataFrame]:
     """
-    Run the first half of the variant processing pipeline step for a single variant (GVF)
-    file. This step is common to both hg38 and mm10 builds, although hg38 builds require
-    this step to be run multiple times. This will process variants into an intermediate
-    format and separate out variant metadata and variant effects. After this step,
-    the variants are completely processed and ready to be stored to disk or processing
-    can continue (e.g. annotation).
+    Completely process a set of variants from a given GVF file, isolate and return
+    variant metadata and effects.
 
-    :param input:
-    :param effect_dir:
-    :param meta_dir:
-    :param client:
-    :return:
+    arguments
+        input:  input variant filepath in GVF format
+        client: dask client object
+
+    returns
+        a dict containing two keys
+            dict:
+                effects:  dataframe containing variant effects
+                metadata: dataframe containing variant metadata
     """
 
     client = get_client() if client is None else client
 
     ## Read and process to an intermediate format
     processed_df = _process_variants(input)
+    processed_df = client.persist(processed_df)
 
     ## Isolate variant metadata and effects
-    effect_df = process_variant_effects(processed_df, client=client)
-    meta_df = process_variant_metadata(processed_df, client=client)
+    effect_df = isolate_variant_effects(processed_df)
+    meta_df = isolate_variant_metadata(processed_df)
 
     return {
         'effects': effect_df,
@@ -387,20 +352,42 @@ def run_variant_processing_pipeline(
 
 ## ugh these function names are so fucking long
 def run_complete_hg38_variant_processing_pipeline(
-    indir: str = globe._dir_hg38_variant_raw,
-    effect_dir: str = globe._dir_hg38_variant_effect,
-    meta_dir: str = globe._dir_hg38_variant_meta,
+    indir: str = None,
+    effect_dir: str = None,
+    meta_dir: str = None,
     client: Client = None
 ) -> List[Future]:
     """
     Run the variant processing pipeline step for all hg38 build chromosomes.
+    Basically a wrapper for run_variant_processing_pipeline but also saves the results
+    to disk.
 
-    :param input:
-    :param effect_dir:
-    :param meta_dir:
-    :param client:
-    :return:
+    arguments
+        indir:      directory filepath containing hg38 variant files
+        effect_dir: output directory to save variant effects
+        meta_dir:   output directory to save variant metadata
+        client:     dask client object
+
+    returns
+        a list of futures containing dicts to effect and metadata filepaths for variants
+        on each chromosome. Dicts have the following format:
+            dict:
+                effects:  future containing filepath to processed effects
+                metadata: future containing filepath to processed metadata
     """
+
+    ## This shouldn't be necessary since this function should never be called when
+    ## a mouse genome build is specified but w/e
+    globals = Globals().reinitialize(build='hg38')
+
+    if indir is None:
+        indir = globals.dir_variant_raw
+
+    if effect_dir is None:
+        effect_dir = globals.dir_variant_effects
+
+    if meta_dir is None:
+        meta_dir = globals.dir_variant_meta
 
     client = get_client() if client is None else client
 
@@ -412,67 +399,54 @@ def run_complete_hg38_variant_processing_pipeline(
 
         log._logger.info(f'Starting work on {fp}')
 
-        results = run_variant_processing_pipeline(fp, client=client)
+        results = run_variant_processing_pipeline(fp)
 
-        ## Have to scatter the DFs prior to using submit
-        #meta_df = client.scatter(results['metadata'], broadcast=True)
-        #effect_df = client.scatter(results['effects'], broadcast=True)
+        ## Persist the processed dataframes onto the cluster workers
+        effects = client.persist(results['effects'])
+        metadata = client.persist(results['metadata'])
 
-        #meta_future = client.submit(dfio.save_dataset, meta_df, name=fp, outdir=meta_dir)
-        #effect_future = client.submit(
-        #    dfio.save_dataset, effect_df, name=fp, outdir=effect_dir
-        #)
-        effect_future = dfio.save_dataset_in_background(
-            results['effects'], name=fp, outdir=effect_dir
-        )
-        meta_future = dfio.save_dataset_in_background(
-            results['metadata'], name=fp, outdir=meta_dir
+        ## Save the processed dataframes in the background
+        effect_future = dfio.save_dataset_in_background3(
+            effects,
+            output=Path(effect_dir, Path(Path(fp).stem).with_suffix('.tsv')).as_posix()
         )
 
-        ## Since this function is meant to be called from the main below, we keep the
-        ## data saving futures for gathering later on
+        meta_future = dfio.save_dataset_in_background3(
+            metadata,
+            output=Path(meta_dir, Path(Path(fp).stem).with_suffix('.tsv')).as_posix()
+        )
+
         futures.append({
             'effects': effect_future,
             'metadata': meta_future
         })
 
-    log._logger.info('Returning')
     return futures
 
 
-def run_mm10_variant_processing_pipeline(
-    input: str = globe._fp_mm10_variant_raw,
-    client: Client = None,
-    **kwargs
-) -> Dict[str, Future]:
-    """
-    mm10 build wrapper function for run_initial_variant_processing_pipeline.
-
-    arguments
-
-    returns
-    """
-
-    client = get_client() if client is None else client
-
-    return run_variant_processing_pipeline(input, client=client)
-
-
 def run_complete_mm10_variant_processing_pipeline(
-    input: str = globe._fp_mm10_variant_raw,
-    effect_path: str = globe._fp_mm10_variant_effect,
-    meta_path: str = globe._fp_mm10_variant_meta,
-    client: Client = None,
-    **kwargs
+    input: str = None,
+    effect_path: str = None,
+    meta_path: str = None,
 ) -> Dict[str, Future]:
     """
     28 min.
     """
 
-    if not client:
-        client = get_client()
+    ## This shouldn't be necessary since this function should never be called when
+    ## a human genome build is specified but w/e
+    globals = Globals().reinitialize(build='mm10')
 
-    results = run_variant_processing_pipeline(input, client=client)
+    if input is None:
+        input = globals.fp_variant_raw
+
+    if effect_path is None:
+        effect_path = globals.fp_variant_effects
+
+    if meta_path is None:
+        meta_path = globals.fp_variant_meta
+
+    results = run_variant_processing_pipeline(input)
 
     effect_future = dfio.save_dataset_in_background(
         results['effects'], output=effect_path
@@ -488,85 +462,73 @@ def run_complete_mm10_variant_processing_pipeline(
     }
 
 
-def run_gene_processing_pipeline(
-    input: str,
-    client: Client = None,
-    **kwargs
-) -> ddf.DataFrame:
+def run_gene_processing_pipeline(input: str) -> ddf.DataFrame:
     """
     Wrapper function for _process_genes which does all the heavy lifting.
     """
 
-    client = get_client() if client is None else client
+    df = _process_genes(input)
 
-    return _process_genes(input, client=client)
-
-
-def run_hg38_gene_processing_pipeline(
-    input: str = globe._fp_hg38_gene_raw,
-    **kwargs
-) -> ddf.DataFrame:
-    """
-    hg38 build wrapper function for run_gene_processing_pipeline.
-    """
-
-    return run_gene_processing_pipeline(input)
+    return df
 
 
 def run_complete_hg38_gene_processing_pipeline(
-    input: str = globe._fp_hg38_gene_raw,
-    output: str = globe._fp_hg38_gene_meta,
-    dedup_output: str = globe._fp_hg38_gene_dedup,
-    client: Client = None,
-    **kwargs
+    input: str = None,
+    output: str = None,
+    dedup_output: str = None,
 ) -> Future:
     """
     28 min.
     """
 
-    client = get_client() if client is None else client
+    globals = Globals().reinitialize(build='hg38')
+
+    if input is None:
+        input = globals.fp_gene_raw
+
+    if output is None:
+        output = globals.fp_gene_meta
+
+    if dedup_output is None:
+        dedup_output = globals.fp_gene_dedup
 
     ## Run the pipeline and process the genes
-    gene_df = run_hg38_gene_processing_pipeline(input, client=client)
+    gene_df = run_gene_processing_pipeline(input)
 
     ## Write the dataframe to a file
     gene_future = dfio.save_dataset_in_background(gene_df, output=output)
 
     ## Generate a deduplicated version based on genes alone
     dedup_future = dfio.save_dataset_in_background(
-        gene_df.drop_duplicates(subset=['gene_id'], split_out=150), output=dedup_output
+        gene_df.drop_duplicates(subset=['gene_id'], split_out=20), output=dedup_output
     )
 
     return [gene_future, dedup_future]
-
-
-
-def run_mm10_gene_processing_pipeline(
-    input: str = globe._fp_mm10_gene_raw,
-    **kwargs
-) -> ddf.DataFrame:
-    """
-    mm10 build wrapper function for run_gene_processing_pipeline.
-    """
-
-    return run_gene_processing_pipeline(input)
 
 
 def run_complete_mm10_gene_processing_pipeline(
-    input: str = globe._fp_mm10_gene_raw,
-    output: str = globe._fp_mm10_gene_meta,
-    dedup_output: str = globe._fp_mm10_gene_dedup,
-    client: Client = None,
+    input: str = None,
+    output: str = None,
+    dedup_output: str = None,
     **kwargs
 ) -> Future:
     """
     28 min.
     """
 
-    client = get_client() if client is None else client
+    globals = Globals().reinitialize(build='mm10')
+
+    if input is None:
+        input = globals.fp_gene_raw
+
+    if output is None:
+        output = globals.fp_gene_meta
+
+    if dedup_output is None:
+        dedup_output = globals.fp_gene_dedup
 
     ## Run the pipeline and process the genes
-    gene_df = run_mm10_gene_processing_pipeline(input, client=client)
+    gene_df = run_gene_processing_pipeline(input)
 
     ## Write the dataframe to a file
     gene_future = dfio.save_dataset_in_background(gene_df, output=output)
@@ -577,87 +539,4 @@ def run_complete_mm10_gene_processing_pipeline(
     )
 
     return [gene_future, dedup_future]
-
-
-if __name__ == '__main__':
-
-    log._initialize_logging(verbose=True)
-
-    #client = Client(LocalCluster(
-    #    n_workers=12,
-    #    processes=True
-    #))
-    cluster = PBSCluster(
-        name='variant-etl',
-        queue='batch',
-        interface='ib0',
-        #cores=2,
-        #processes=2,
-        #memory='160GB',
-        cores=2,
-        processes=2,
-        memory='140GB',
-        local_directory='/var/tmp',
-        walltime='01:00:00',
-        job_extra=['-e logs', '-o logs'],
-        env_extra=['cd $PBS_O_WORKDIR']
-    )
-
-    #cluster.adapt(minimum=10, maximum=45)
-    cluster.scale_up(n=20)
-
-    client = Client(cluster)
-
-    Path('logs').mkdir(exist_ok=True)
-    init_logging_partial = partial(log._initialize_logging, verbose=True)
-
-    client.register_worker_callbacks(setup=init_logging_partial)
-
-    #hg38_variants = run_hg38_processing_pipeline(
-    #    Path(globe._dir_hg38_variant_raw, 'hg38-chromosome-10.gvf').as_posix()
-    #)
-
-    hg38_genes = run_complete_hg38_gene_processing_pipeline()
-    #hg38_variants = run_complete_hg38_variant_processing_pipeline()
-    #client.gather(hg38_variants)
-    mm10_genes = run_complete_mm10_gene_processing_pipeline()
-    #mm10_variants = run_complete_mm10_variant_processing_pipeline()
-    #client.gather(mm10_variants)
-    client.gather(hg38_genes)
-    client.gather(mm10_genes)
-    ## Init logging on each worker
-    #client.run(log._initialize_logging, verbose=True)
-
-    #mm10_variants = run_mm10_variant_processing(client)
-    #mm10_genes = run_mm10_gene_processing(client)
-
-    #hg38_variants = run_hg38_variant_processing(client)
-    #hg38_genes = run_hg38_gene_processing(client)
-
-    #client.gather(mm10_variants)
-    #client.gather(mm10_genes)
-    #client.gather(hg38_variants)
-    #client.gather(hg38_genes)
-
-    #hg38_futures = run_hg38_variant_processing2(client)
-    #client.gather(hg38_futures)
-    #hg38_futures = run_hg38_variant_processing3(client)
-    #df = read_gvf_file('data/variant/hg38/raw/chromosome-21.vcf')
-    #df = process_gvf(df)
-
-    #log._logger.info('Processing and saving variants')
-
-    #tempdir = save_variants(df)
-
-    #log._logger.info('Consolidating variants')
-
-    #consolidate_saved_variants(tempdir, 'data/variant/hg38/processed/chromosome-21.vcf')
-
-    log._logger.info('Done')
-    #human_futures = run_human_feature_processing(client)
-    #mouse_futures = run_mouse_feature_processing(client)
-
-    #client.gather([human_futures, mouse_futures])
-
-    client.close()
 

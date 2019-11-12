@@ -2,10 +2,14 @@ Click==7.0
 dask==2.6.0
 dask-jobqueue==0.7.0
 distributed==2.6.0
+flake8==3.7.9
+mypy==0.740
+mypy-extensions==0.4.3
 numpy==1.17.3
 pandas==0.25.3
 partd==0.3.10
 pyarrow==0.15.1
+pytest==5.2.2
 PyYAML==5.1
 requests==2.22.0
 urllib3==1.25.3

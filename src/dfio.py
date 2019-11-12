@@ -6,17 +6,20 @@
 
 from dask.base import tokenize
 from dask.distributed import Client
+from dask.distributed import Future
 from dask.distributed import as_completed
 from dask.distributed import get_client
+from glob import glob
 from pathlib import Path
+from typing import List
 import dask.dataframe as ddf
 import logging
 import pandas as pd
 import shutil
 import tempfile as tf
 
-from . import globe
 from . import log
+from .globe import Globals
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
@@ -34,7 +37,7 @@ def save_distributed_dataframe_partitions(df: ddf.DataFrame, outdir: str = None)
     """
 
     if not outdir:
-        outdir = tf.mkdtemp(dir=globe._dir_data)
+        outdir = tf.mkdtemp(dir=Globals().dir_data)
 
     df.to_csv(outdir, sep='\t', index=False, na_rep='NA')
 
@@ -185,6 +188,45 @@ def consolidate_separate_partitions2(partitions, output: str) -> str:
     return output
 
 
+def consolidate_separate_partitions3(partitions, tempdir: str, output: str) -> str:
+    """
+    Read separate dask dataframe partition files from a single folder and
+    concatenate them into a single file.
+
+    arguments
+        indir:  input directory filepath
+        output: output filepath
+
+    returns
+        the output filepath
+    """
+
+    log._logger.info(f'Finalizing {output}')
+
+    first = True
+
+    with open(output, 'w') as ofl:
+        for part in glob(Path(tempdir, '*').as_posix()):
+            with open(part, 'r') as ifl:
+                ## If this is the first file being read then we include the header
+                if first:
+                    ofl.write(ifl.read())
+
+                    first = False
+
+                ## Otherwise skip the header so it isn't repeated throughout
+                else:
+                    next(ifl)
+
+                    ofl.write(ifl.read())
+
+    ## Assume the input directory is a temp one and remove it since it's no longer needed
+    #shutil.rmtree(Path(partitions[0]).parent)
+    shutil.rmtree(tempdir)
+
+    return output
+
+
 def write_dataframe_partition(df: pd.DataFrame, output: str) -> str:
     """
     Write each dataframe partition, from a distributed dask dataframe, to a folder.
@@ -202,7 +244,7 @@ def write_dataframe_partition(df: pd.DataFrame, output: str) -> str:
     return output
 
 
-def write_dataframe_partitions(df: ddf.DataFrame) -> str:
+def write_dataframe_partitions(df: ddf.DataFrame) -> List[str]:
     """
     Write each dataframe partition, from a distributed dask dataframe, to a folder.
 
@@ -215,18 +257,19 @@ def write_dataframe_partitions(df: ddf.DataFrame) -> str:
     """
 
     client = get_client()
-    outdir = tf.mkdtemp(dir=globe._dir_data)
+    outdir = tf.mkdtemp(dir=Globals().dir_data)
     paths = []
 
     for i, partition in enumerate(df.to_delayed()):
         path = Path(outdir, tokenize(partition.key)).resolve().as_posix()
 
+        #log._logger.info(f'Getting partition {i} as delayed...')
         paths.append(client.submit(
             write_dataframe_partition, client.compute(partition), path
         ))
 
-
     return paths
+
 
 def save_dataset_in_background(
     df: ddf.DataFrame,
@@ -235,7 +278,7 @@ def save_dataset_in_background(
     outdir: str = './',
     output: str = None,
     client: Client = None
-) -> str:
+) -> Future:
     """
     Terrible ass generic name but idk what else to name it and it's used throughout by
     different parts of the pipeline. Basically a wrapper for save_distributed_dataframe
@@ -261,7 +304,6 @@ def save_dataset_in_background(
 
     client = get_client() if client is None else client
 
-    log._logger.info('Writing dataframe partitions')
     path_futures = write_dataframe_partitions(df)
 
     return client.submit(consolidate_separate_partitions2, path_futures, output)
@@ -283,3 +325,99 @@ def save_dataset_in_background(
     return client.submit(consolidate_separate_partitions2, delayeds, tmp_out, output)
     """
 
+def save_dataset_in_background2(
+        df: ddf.DataFrame,
+        name: str = 'dataset',
+        ext: str = '.tsv',
+        outdir: str = './',
+        output: str = None,
+        client: Client = None
+) -> Future:
+    """
+    Terrible ass generic name but idk what else to name it and it's used throughout by
+    different parts of the pipeline. Basically a wrapper for save_distributed_dataframe
+    but will autogenerate an output path if one isn't given.
+    If you're calling this function using client.submit, you should scatter the dataframe
+    beforehand or horrible shit is gonna happen to you.
+
+    arguments
+        df:     dask dataframe
+        name:   an input path or filename used to generate a filename for the output path
+        ext:    file extension
+        outdir: output directory
+        output: output filepath
+
+    returns
+        the output filepath
+    """
+
+    ## Grab the filename part of name, replace its extension with ext, and attach it to
+    ## the given output directory
+    if not output:
+        output = Path(outdir, Path(Path(name).stem).with_suffix(ext)).as_posix()
+
+    client = get_client() if client is None else client
+
+    ## should be a list with a single element since we specified saving as a single file
+    delayeds = df.to_csv(
+        output, sep='\t', index=False, na_rep='NA',
+        single_file=True, compute=False
+    )
+    futures = client.compute(delayeds[0])
+    print(futures)
+    print(type(futures))
+    return futures
+
+
+def save_dataset_in_background3(
+    df: ddf.DataFrame,
+    name: str = 'dataset',
+    ext: str = '.tsv',
+    outdir: str = './',
+    output: str = None,
+    client: Client = None
+) -> Future:
+    """
+    Terrible ass generic name but idk what else to name it and it's used throughout by
+    different parts of the pipeline. Basically a wrapper for save_distributed_dataframe
+    but will autogenerate an output path if one isn't given.
+    If you're calling this function using client.submit, you should scatter the dataframe
+    beforehand or horrible shit is gonna happen to you.
+
+    arguments
+        df:     dask dataframe
+        name:   an input path or filename used to generate a filename for the output path
+        ext:    file extension
+        outdir: output directory
+        output: output filepath
+
+    returns
+        the output filepath
+    """
+
+    ## Grab the filename part of name, replace its extension with ext, and attach it to
+    ## the given output directory
+    if not output:
+        output = Path(outdir, Path(Path(name).stem).with_suffix(ext)).as_posix()
+
+    client = get_client() if client is None else client
+
+    outdir = tf.mkdtemp(dir=Globals().dir_data)
+
+    ## Save partitions as they complete to a temp directory accessible by all workers
+    delayeds = df.to_csv(
+        Path(outdir, '*').as_posix(), sep='\t', index=False, na_rep='NA', compute=False
+    )
+
+    ## Convert delayed instances to futures
+    futures = [client.compute(d) for d in delayeds]
+
+    ## Consolidate separate files into a single file
+    future = client.submit(consolidate_separate_partitions3, futures, outdir, output)
+
+    return future
+
+    #futures = client.compute(delayeds[0])
+    #print(futures)
+    #print(type(futures))
+    #return futures

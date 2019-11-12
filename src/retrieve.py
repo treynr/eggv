@@ -7,7 +7,7 @@
 
 from dask.distributed import Client
 from dask.distributed import Future
-from dask.distributed import LocalCluster
+from dask.distributed import get_client
 from pathlib import Path
 from typing import List
 import gzip
@@ -15,7 +15,7 @@ import logging
 import requests as req
 import shutil
 
-from . import globe
+from .globe import Globals
 from . import log
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
@@ -37,8 +37,8 @@ def _download(url, output):
         response.raise_for_status()
 
         with open(output, 'wb') as fl:
-            ## Chunk size of 250MB
-            for chunk in response.iter_content(chunk_size=250000000):
+            ## Chunk size of 50MB
+            for chunk in response.iter_content(chunk_size=50000000):
                 fl.write(chunk)
 
     except Exception as e:
@@ -46,7 +46,7 @@ def _download(url, output):
         raise
 
 
-def _unzip(fp: str, output: str = None, force: bool = False, **kwargs) -> None:
+def _unzip(fp: str, output: str = None, force: bool = False, **kwargs) -> str:
     """
     Unzip a gzipped file to the given output path.
 
@@ -62,7 +62,7 @@ def _unzip(fp: str, output: str = None, force: bool = False, **kwargs) -> None:
 
     ## Assuming the input has a file extension like '.tar.gz' this well get rid of '.gz'
     if not output:
-        output = Path(fp).with_suffix('')
+        output = Path(fp).with_suffix('').as_posix()
 
     if Path(output).exists() and not force:
         log._logger.warning(
@@ -89,7 +89,7 @@ def _download_ensembl_build(url: str, output: str, force: bool = False):
 
     if Path(output).exists() and not force:
         log._logger.warning(
-            'The Ensembl build (%s) already exists, use force=True to retrieve it', output
+            f'The Ensembl build ({output}) already exists, use force=True to retrieve it'
         )
 
         return output
@@ -100,8 +100,8 @@ def _download_ensembl_build(url: str, output: str, force: bool = False):
 
 
 def download_hg38_gene_build(
-    url: str = globe._url_hg38_gene,
-    output: str = globe._fp_hg38_gene_compressed,
+    url: str = None,
+    output: str = None,
     force: bool = False
 ) -> str:
     """
@@ -109,11 +109,19 @@ def download_hg38_gene_build(
 
     arguments
         See download_ensembl_build for argument descriptions. This function is simply a
-        wrapper.
+        wrapper with hg38 defaults.
 
     returns
         the output filepath
     """
+
+    globals = Globals().reinitialize(build='hg38')
+
+    if url is None:
+        url = globals.url_hg38_gene
+
+    if output is None:
+        output = globals.fp_gene_compressed
 
     _download_ensembl_build(url, output, force)
 
@@ -122,8 +130,8 @@ def download_hg38_gene_build(
 
 def download_hg38_variant_build(
     chrom: str,
-    url: str = globe._url_hg38_variation,
-    output: str = globe._dir_hg38_variant_raw,
+    url: str = None,
+    output: str = None,
     force: bool = False
 ) -> str:
     """
@@ -139,6 +147,14 @@ def download_hg38_variant_build(
         the output filepath
     """
 
+    globals = Globals().reinitialize(build='hg38')
+
+    if url is None:
+        url = globals.url_hg38_variation
+
+    if output is None:
+        output = globals.dir_variant_raw
+
     ## Add the chromosome number to the URL, which should now resolve correctly
     url = url.format(chrom)
 
@@ -151,8 +167,8 @@ def download_hg38_variant_build(
 
 
 def download_mm10_gene_build(
-    url: str = globe._url_mm10_gene,
-    output: str = globe._fp_mm10_gene_compressed,
+    url: str = None,
+    output: str = None,
     force: bool = False
 ) -> str:
     """
@@ -160,11 +176,19 @@ def download_mm10_gene_build(
 
     arguments
         See download_ensembl_build for argument descriptions. This function is simply a
-        wrapper.
+        wrapper with mm10 defaults.
 
     returns
         the output filepath
     """
+
+    globals = Globals().reinitialize(build='mm10')
+
+    if url is None:
+        url = globals.url_mm10_gene
+
+    if output is None:
+        output = globals.fp_gene_compressed
 
     _download_ensembl_build(url, output, force)
 
@@ -172,8 +196,8 @@ def download_mm10_gene_build(
 
 
 def download_mm10_variant_build(
-    url: str = globe._url_mm10_variation,
-    output: str = globe._fp_mm10_variant_compressed,
+    url: str = None,
+    output: str = None,
     force: bool = False
 ) -> str:
     """
@@ -187,12 +211,20 @@ def download_mm10_variant_build(
         the output filepath
     """
 
+    globals = Globals().reinitialize(build='mm10')
+
+    if url is None:
+        url = globals.url_mm10_variation
+
+    if output is None:
+        output = globals.fp_variant_raw
+
     _download_ensembl_build(url, output, force)
 
     return output
 
 
-def run_hg38_variant_retrieval(client: Client, force: bool = False) -> List[Future]:
+def run_hg38_variant_retrieval(client: Client = None, force: bool = False) -> List[Future]:
     """
     Executes the genomic variant retrieval step of the ETL pipeline for hg38 variants.
 
@@ -204,9 +236,10 @@ def run_hg38_variant_retrieval(client: Client, force: bool = False) -> List[Futu
         a list of Futures, one per chromosome variant build
     """
 
+    client = get_client() if client is None else client
     futures = []
 
-    for chrom in globe._var_human_chromosomes:
+    for chrom in Globals().var_human_chromosomes:
 
         ## Download from Ensembl
         dl = client.submit(download_hg38_variant_build, chrom, force=force)
@@ -219,7 +252,7 @@ def run_hg38_variant_retrieval(client: Client, force: bool = False) -> List[Futu
     return futures
 
 
-def run_hg38_gene_retrieval(client: Client, force: bool = False) -> Future:
+def run_hg38_gene_retrieval(client: Client = None, force: bool = False) -> Future:
     """
     Executes the genomic variant retrieval step of the ETL pipeline for hg38 variants.
 
@@ -231,6 +264,8 @@ def run_hg38_gene_retrieval(client: Client, force: bool = False) -> Future:
         a Future
     """
 
+    client = get_client() if client is None else client
+
     ## Download from Ensembl
     dl = client.submit(download_hg38_gene_build, force=force)
 
@@ -240,7 +275,10 @@ def run_hg38_gene_retrieval(client: Client, force: bool = False) -> Future:
     return dl_unzip
 
 
-def run_mm10_variant_retrieval(client: Client, force: bool = False) -> List[Future]:
+def run_mm10_variant_retrieval(
+    client: Client = None,
+    force: bool = False
+) -> List[Future]:
     """
     Executes the genomic variant retrieval step of the ETL pipeline for mm10 variants.
 
@@ -251,6 +289,8 @@ def run_mm10_variant_retrieval(client: Client, force: bool = False) -> List[Futu
     returns
         a Future
     """
+
+    client = get_client() if client is None else client
 
     ## Download from Ensembl
     dl = client.submit(download_mm10_variant_build, force=force)
@@ -261,7 +301,7 @@ def run_mm10_variant_retrieval(client: Client, force: bool = False) -> List[Futu
     return dl_unzip
 
 
-def run_mm10_gene_retrieval(client: Client, force: bool = False) -> Future:
+def run_mm10_gene_retrieval(client: Client = None, force: bool = False) -> Future:
     """
     Executes the genomic variant retrieval step of the ETL pipeline for mm10 variants.
 
@@ -273,6 +313,8 @@ def run_mm10_gene_retrieval(client: Client, force: bool = False) -> Future:
         a Future
     """
 
+    client = get_client() if client is None else client
+
     ## Download from Ensembl
     dl = client.submit(download_mm10_gene_build, force=force)
 
@@ -280,32 +322,4 @@ def run_mm10_gene_retrieval(client: Client, force: bool = False) -> Future:
     dl_unzip = client.submit(_unzip, dl, force=force)
 
     return dl_unzip
-
-
-if __name__ == '__main__':
-
-    client = Client(LocalCluster(
-        n_workers=5,
-        processes=True
-    ))
-
-    log._initialize_logging(verbose=True)
-
-    ## Init logging on each worker
-    client.run(log._initialize_logging, verbose=True)
-
-    #hg38_variants = run_hg38_variant_retrieval(client, force=False)
-    #hg38_genes = run_hg38_gene_retrieval(client, force=False)
-
-    mm10_variants = run_mm10_variant_retrieval(client, force=False)
-    mm10_genes = run_mm10_gene_retrieval(client, force=False)
-
-    #client.gather([hg38_variants, hg38_genes, mm10_variants, mm10_genes])
-    client.gather([mm10_variants, mm10_genes])
-
-    #client.gather(hg38_variants)
-    #client.gather(hg38_genes)
-    #client.gather([mm10_variants, mm10_genes])
-
-    client.close()
 

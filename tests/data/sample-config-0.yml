@@ -1,0 +1,24 @@
+resources:
+  environment:
+    hpc: true
+    local: false
+    cloud: false
+
+  cores: 8
+  processes: 8
+  jobs: 10
+  memory: '8GB'
+  walltime: '05:00:00'
+  interface: 'ib0'
+
+directories:
+  data: 'data/'
+  temp: ~
+
+scheduler: ~
+
+workers: ~
+
+overwrite: true
+
+species: ~
