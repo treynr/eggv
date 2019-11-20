@@ -1,0 +1,33 @@
+
+## Ignore the following shit:
+
+## Python caches
+__pycache__/**
+__pycache__
+
+## data directory
+data/**
+data
+
+## Pycharm stuff
+.idea/**
+.idea
+
+## super secret stuffs
+*.cfg
+*.yml
+
+## stupid compiled python files
+*.pyc
+
+## vim swp files
+*.sw*
+
+## Output/input
+*.bed
+*.gff
+*.gvf
+*.gz
+*.tsv
+*.txt
+

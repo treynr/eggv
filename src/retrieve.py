@@ -278,7 +278,7 @@ def run_hg38_gene_retrieval(client: Client = None, force: bool = False) -> Futur
 def run_mm10_variant_retrieval(
     client: Client = None,
     force: bool = False
-) -> List[Future]:
+) -> Future:
     """
     Executes the genomic variant retrieval step of the ETL pipeline for mm10 variants.
 

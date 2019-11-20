@@ -5,130 +5,16 @@
 ## desc: CLI interface for EGG:V.
 ## auth: TR
 
-from dask.distributed import get_client
 import click
 import functools
 import logging
 
 from . import __version__
-from . import annotate
 from . import configuration
-from . import cluster
 from . import log
 from . import pipeline
-from . import process
-from . import retrieve
-from .globe import Globals
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
-
-
-def _initialize_cluster(config: configuration.Config):
-    """
-    Initialize the cluster of workers based on pipeline configuration.
-
-    arguments
-        config: pipeline configuration
-
-    returns
-        a dask client
-    """
-
-    return cluster.initialize_cluster(
-        hpc=config.config['resources']['environment']['hpc'],
-        temp=config.config['directories']['temp'],
-        **config.config['resources']
-    )
-
-
-def _initialize_globals(config: configuration.Config) -> None:
-    """
-    Initialize data directories and filepaths.
-
-    arguments
-        config: pipeline configuration
-    """
-
-    Globals(datadir=config.config['directories']['data'], build=config.config['species'])
-
-
-def _run_retrieve_step(config: configuration.Config) -> None:
-    """
-    Run the data retrieval step of the pipeline.
-
-    arguments
-        config: pipeline configuration
-    """
-
-    client = _initialize_cluster(config)
-    force = config.config['overwrite']
-    _initialize_globals(config)
-
-    if config.config['species'] == 'hg38':
-        ## This is actually a list of futures, one per chromosome
-        variant_future = retrieve.run_hg38_variant_retrieval(force=force)
-        gene_future = retrieve.run_hg38_gene_retrieval(force=force)
-
-    else:
-        variant_future = retrieve.run_mm10_variant_retrieval(force=force)
-        gene_future = retrieve.run_mm10_gene_retrieval(force=force)
-
-    ## Wait for downloading and decompression to finish
-    client.gather([variant_future, gene_future])
-    client.close()
-
-
-def _run_process_step(config: configuration.Config) -> None:
-    """
-    Run the gene and variant processing step of the pipeline.
-    Assumes the required files have already been retrieved and stored to disk.
-
-    arguments
-        config: pipeline configuration
-    """
-
-    _initialize_cluster(config)
-    _initialize_globals(config)
-
-    if config.config['species'] == 'hg38':
-        ## This is actually a list of futures, one per chromosome
-        variants = process.run_complete_hg38_variant_processing_pipeline()
-        genes = process.run_complete_hg38_gene_processing_pipeline()
-
-    else:
-        variants = process.run_complete_mm10_variant_processing_pipeline() # type: ignore
-        genes = process.run_complete_mm10_gene_processing_pipeline()
-
-    client = get_client()
-
-    ## Wait for processing to finish
-    client.gather(variants)
-    client.gather(genes)
-    client.close()
-
-
-def _run_annotate_step(config: configuration.Config) -> None:
-    """
-    Run the variant annotation step of the pipeline.
-    Assumes the required files have already been retrieved, processed, and stored to disk.
-
-    arguments
-        config: pipeline configuration
-    """
-
-    client = _initialize_cluster(config)
-    _initialize_globals(config)
-
-    if config.config['species'] == 'hg38':
-        ## This is actually a list of futures, one per chromosome
-        ann_future = annotate.run_complete_hg38_annotation_pipeline()
-
-    else:
-        ann_future = annotate.run_complete_mm10_annotation_pipeline()
-
-    ## Wait for processing to finish
-    client.gather(ann_future)
-    client.close()
 
 
 def _handle_common_options(ctx, conpath=None, force=None, species=None):
@@ -225,6 +111,8 @@ def _cmd_retrieve(ctx, config: str, force: bool, species: str) -> None:
 
     _verify_options(ctx.obj['config'])
 
+    pipeline.run_retrieve_step(ctx.obj['config'])
+
 
 @cli.command('process')
 @_common_options
@@ -241,7 +129,7 @@ def _cmd_process(ctx, config: str, force: bool, species: str) -> None:
 
     _verify_options(ctx.obj['config'])
 
-    _run_process_step(ctx.obj['config'])
+    pipeline.run_process_step(ctx.obj['config'])
 
 
 @cli.command('annotate')
@@ -259,7 +147,7 @@ def _cmd_annotate(ctx, config: str, force: bool, species: str) -> None:
 
     _verify_options(ctx.obj['config'])
 
-    _run_annotate_step(ctx.obj['config'])
+    pipeline.run_annotate_step(ctx.obj['config'])
 
 
 @cli.command('complete')

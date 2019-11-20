@@ -8,6 +8,7 @@
 from dask.distributed import Client
 from dask.distributed import get_client
 from glob import glob
+from pathlib import Path
 from typing import Dict
 import dask.dataframe as ddf
 import logging
@@ -219,11 +220,11 @@ def run_complete_hg38_annotation_pipeline(
         intragenic = client.persist(intragenic)
 
         ## Save to files
-        inter_future = dfio.save_dataset_in_background(
-            intergenic, name=fp, outdir=intergenic_dir
+        inter_future = dfio.save_dataframe_async(
+            intergenic, Path(intergenic_dir, Path(fp).name).as_posix()
         )
-        intra_future = dfio.save_dataset_in_background(
-            intragenic, name=fp, outdir=intragenic_dir
+        intra_future = dfio.save_dataframe_async(
+            intragenic, Path(intragenic_dir, Path(fp).name).as_posix()
         )
 
         futures.append({
@@ -276,15 +277,15 @@ def run_complete_mm10_annotation_pipeline(
     annotations = run_annotation_pipeline(variant_df, gene_df)
 
     ## Scatter annotations prior to saving
-    intergenic = client.scatter(annotations['intergenic'])
-    intragenic = client.scatter(annotations['intragenic'])
+    # intergenic = client.scatter(annotations['intergenic'])
+    # intragenic = client.scatter(annotations['intragenic'])
 
     ## Save to files
-    inter_future = client.submit(
-        dfio.save_dataset, intergenic, name=variant_fp, output=intergenic_fp
+    inter_future = dfio.save_dataframe_async(
+        annotations['intergenic'], intergenic_fp.as_posix() # type: ignore
     )
-    intra_future = client.submit(
-        dfio.save_dataset, intragenic, name=variant_fp, output=intragenic_fp
+    intra_future = dfio.save_dataframe_async(
+        annotations['intragenic'], intragenic_fp.as_posix() # type: ignore
     )
 
     futures.append({

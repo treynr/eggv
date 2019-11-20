@@ -406,14 +406,14 @@ def run_complete_hg38_variant_processing_pipeline(
         metadata = client.persist(results['metadata'])
 
         ## Save the processed dataframes in the background
-        effect_future = dfio.save_dataset_in_background3(
+        effect_future = dfio.save_dataframe_async(
             effects,
-            output=Path(effect_dir, Path(Path(fp).stem).with_suffix('.tsv')).as_posix()
+            Path(effect_dir, Path(Path(fp).stem).with_suffix('.tsv')).as_posix()
         )
 
-        meta_future = dfio.save_dataset_in_background3(
+        meta_future = dfio.save_dataframe_async(
             metadata,
-            output=Path(meta_dir, Path(Path(fp).stem).with_suffix('.tsv')).as_posix()
+            Path(meta_dir, Path(Path(fp).stem).with_suffix('.tsv')).as_posix()
         )
 
         futures.append({
@@ -448,12 +448,8 @@ def run_complete_mm10_variant_processing_pipeline(
 
     results = run_variant_processing_pipeline(input)
 
-    effect_future = dfio.save_dataset_in_background(
-        results['effects'], output=effect_path
-    )
-    meta_future = dfio.save_dataset_in_background(
-        results['metadata'], output=meta_path
-    )
+    effect_future = dfio.save_dataframe_async(results['effects'], effect_path)
+    meta_future = dfio.save_dataframe_async(results['metadata'], meta_path)
 
     ## Return the filepaths from the dataframe IO functions
     return {
@@ -476,7 +472,7 @@ def run_complete_hg38_gene_processing_pipeline(
     input: str = None,
     output: str = None,
     dedup_output: str = None,
-) -> Future:
+) -> List[Future]:
     """
     28 min.
     """
@@ -496,11 +492,11 @@ def run_complete_hg38_gene_processing_pipeline(
     gene_df = run_gene_processing_pipeline(input)
 
     ## Write the dataframe to a file
-    gene_future = dfio.save_dataset_in_background(gene_df, output=output)
+    gene_future = dfio.save_dataframe_async(gene_df, output)
 
     ## Generate a deduplicated version based on genes alone
-    dedup_future = dfio.save_dataset_in_background(
-        gene_df.drop_duplicates(subset=['gene_id'], split_out=20), output=dedup_output
+    dedup_future = dfio.save_dataframe_async(
+        gene_df.drop_duplicates(subset=['gene_id'], split_out=20), dedup_output
     )
 
     return [gene_future, dedup_future]
@@ -510,8 +506,7 @@ def run_complete_mm10_gene_processing_pipeline(
     input: str = None,
     output: str = None,
     dedup_output: str = None,
-    **kwargs
-) -> Future:
+) -> List[Future]:
     """
     28 min.
     """
@@ -531,11 +526,11 @@ def run_complete_mm10_gene_processing_pipeline(
     gene_df = run_gene_processing_pipeline(input)
 
     ## Write the dataframe to a file
-    gene_future = dfio.save_dataset_in_background(gene_df, output=output)
+    gene_future = dfio.save_dataframe_async(gene_df, output)
 
     ## Generate a deduplicated version based on genes alone
-    dedup_future = dfio.save_dataset_in_background(
-        gene_df.drop_duplicates(subset=['gene_id'], split_out=150), output=dedup_output
+    dedup_future = dfio.save_dataframe_async(
+        gene_df.drop_duplicates(subset=['gene_id'], split_out=150), dedup_output
     )
 
     return [gene_future, dedup_future]

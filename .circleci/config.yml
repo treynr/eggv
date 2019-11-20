@@ -1,0 +1,46 @@
+version: 2
+jobs:
+  build:
+    branches:
+      only:
+        - dev
+
+    docker:
+      - image: circleci/python:3.7.2
+
+    steps:
+      - checkout
+
+      - run: sudo chown -R circleci:circleci /usr/local/bin
+      - run: sudo chown -R circleci:circleci /usr/local/lib/python3.7/site-packages
+
+      - restore_cache:
+          name: Restore cached dependencies
+          key: eggv-v1.0.0-{{ checksum "requirements.dev.txt" }}
+
+      - run:
+          name: Install dependencies
+          command: sudo pip install -r requirements.dev.txt
+
+      - run:
+          name: Update script permissions
+          command: chmod +x tests/run-*.sh
+
+      - run:
+          name: Run tests
+          command: ./tests/run-tests.sh
+
+      - run:
+          name: Type checks
+          command: ./tests/run-type-checks.sh
+
+      - run:
+          name: Style checks
+          command: ./tests/run-style-checks.sh
+
+      - save_cache:
+          name: Cache dependencies
+          key: eggv-v1.0.0-{{ checksum "requirements.dev.txt" }}
+          paths:
+            - /usr/local/lib/python3.7/site-packages
+            - /usr/local/bin
