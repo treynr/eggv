@@ -3,6 +3,7 @@ dask==2.6.0
 dask-jobqueue==0.7.0
 distributed==2.6.0
 flake8==3.7.9
+fsspec==0.4.1
 mypy==0.740
 mypy-extensions==0.4.3
 numpy==1.17.3

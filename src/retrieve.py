@@ -21,7 +21,7 @@ from . import log
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 
-def _download(url, output):
+def _download(url: str, output: str) -> None:
     """
     Download a file at the given URL and save it to disk.
 

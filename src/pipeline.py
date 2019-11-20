@@ -6,6 +6,8 @@
 ## auth: TR
 
 from dask.distributed import as_completed
+from dask.distributed import get_client
+from functools import partial
 from glob import glob
 from pathlib import Path
 import logging
@@ -44,10 +46,21 @@ def _initialize_cluster(config: configuration.Config):
 def _initialize_globals(config: configuration.Config) -> Globals:
     """
     Initialize data directories and filepaths.
+    This should be called after the cluster is initialized.
 
     arguments
         config: pipeline configuration
     """
+
+    client = get_client()
+
+    ## Ensure globals are properly initialized on all workers.
+    init_partial = partial(
+        Globals,
+        datadir=config.config['directories']['data'],
+        build=config.config['species']
+    )
+    client.register_worker_callbacks(setup=init_partial)
 
     return Globals(
         datadir=config.config['directories']['data'],

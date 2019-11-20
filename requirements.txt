@@ -2,6 +2,7 @@ Click==7.0
 dask==2.6.0
 dask-jobqueue==0.7.0
 distributed==2.6.0
+fsspec==0.4.1
 numpy==1.17.3
 pandas==0.25.3
 partd==0.3.10
