@@ -2,6 +2,9 @@
 EGG:V
 =====
 
+.. image:: https://img.shields.io/circleci/build/github/treynr/eggv/master?style=flat-square&token=af16c5bace85be7cc7df93058080dafe90586e12
+    :target: https://circleci.com/gh/treynr/eggv
+
 Epigenomics and genetics: variation (EGG:V) integration pipeline.
 This is one of five ETL sub-pipelines designed to integrate and model
 large-scale, heterogeneous epigenomics datasets in GeneWeaver__ (GW).
