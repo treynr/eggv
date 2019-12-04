@@ -12,11 +12,11 @@ jobs:
 
       - restore_cache:
           name: Restore cached dependencies
-          key: eggv-v1.0.0-{{ checksum "requirements.dev.txt" }}
+          key: eggv-v1.2.0-{{ checksum "requirements.txt" }}
 
       - run:
           name: Install dependencies
-          command: sudo pip install -r requirements.dev.txt
+          command: sudo pip install -r requirements.txt
 
       - run:
           name: Update script permissions
@@ -36,7 +36,7 @@ jobs:
 
       - save_cache:
           name: Cache dependencies
-          key: eggv-v1.0.0-{{ checksum "requirements.dev.txt" }}
+          key: eggv-v1.2.0-{{ checksum "requirements.txt" }}
           paths:
             - /usr/local/lib/python3.7/site-packages
             - /usr/local/bin
