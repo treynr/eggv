@@ -3,7 +3,7 @@
 
 import subprocess
 
-_version = (1, 0, 0)
+_version = (1, 1, 0)
 
 
 def _get_build() -> str:
