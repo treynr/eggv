@@ -247,8 +247,6 @@ Software
 ''''''''
 
 See ``requirements.txt`` for a complete list of required Python packages.
-If running tests, ``requirements.dev.txt`` has several additional packages that are
-needed.
 The major requirements are:
 
 - Python >= 3.7
