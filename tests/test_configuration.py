@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import tempfile as tf
 
-from src import configuration
+from eggv import configuration
 
 @pytest.fixture(scope='module')
 def root_dir():
