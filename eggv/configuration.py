@@ -14,7 +14,7 @@ resources:
   environment:
     hpc: true
     local: false
-    cloud: false
+    custom: false
 
   cores: 4
   processes: 4

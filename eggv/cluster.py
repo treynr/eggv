@@ -115,6 +115,7 @@ def initialize_cluster(
     hpc: bool = True,
     jobs: int = 10,
     temp: str = tf.gettempdir(),
+    scheduler: str = None,
     verbose: bool = True,
     **kwargs
 ) -> Client:
@@ -122,10 +123,11 @@ def initialize_cluster(
     Initialize a distributed dask cluster.
 
     arguments
-        hpc:     if true, initialize a PBS cluster otherwise just use a single machine
-                 local cluster
-        verbose: logging verbosity
-        jobs:    number of jobs to submit to an HPC cluster
+        hpc:       if true, initialize a HPC cluster running PBS/TORQUE
+        jobs:      number of jobs to submit to an HPC cluster
+        temp:      temp directory for intermediate/worker output
+        scheduler: scheduler address if using a custom cluster
+        verbose:   logging verbosity
 
     returns
         a dask client
@@ -138,11 +140,19 @@ def initialize_cluster(
     if hpc:
         cluster = _initialize_pbs_cluster(**kwargs)
         cluster.scale(jobs=jobs)
+        client = Client(cluster)
+
+    elif kwargs['environment']['local']:
+        cluster = _initialize_local_cluster(**kwargs)
+        client = Client(cluster)
+
+    elif kwargs['environment']['custom']:
+        client = Client(address=scheduler)
 
     else:
-        cluster = _initialize_local_cluster(**kwargs)
-
-    client = Client(cluster)
+        ## Should never get here
+        log._logger.error('Something horrible happened while starting the cluster')
+        exit(1)
 
     ## Run the logging init function on each worker and register the callback so
     ## future workers also run the function

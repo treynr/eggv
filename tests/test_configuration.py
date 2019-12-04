@@ -32,7 +32,7 @@ def test_default_config_loading():
     assert config.config['species'] is None
     assert config.config['resources']['environment']['hpc'] == True
     assert config.config['resources']['environment']['local'] == False
-    assert config.config['resources']['environment']['cloud'] == False
+    assert config.config['resources']['environment']['custom'] == False
     assert config.config['resources']['cores'] == 4
     assert config.config['resources']['processes'] == 4
     assert config.config['resources']['jobs'] == 40

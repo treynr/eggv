@@ -42,11 +42,38 @@ def _handle_common_options(ctx, conpath=None, force=None, species=None):
 
 def _verify_options(config: configuration.Config) -> None:
     """
-    Ensure required options are set.
+    Ensure required options are set and prevent execution if incompatible options
+    are specified.
     """
 
     if not config.config['species']:
         log._logger.error('You must specify a species (-s/--species)')
+        exit(1)
+
+    if config.config['hpc'] and config.config['local']:
+        log._logger.error('You can only use one of the config options (hpc/local)')
+        exit(1)
+
+    if config.config['hpc'] and config.config['custom']:
+        log._logger.error('You can only use one of the config options (hpc/custom)')
+        exit(1)
+
+    if config.config['local'] and config.config['custom']:
+        log._logger.error('You can only use one of the config options (local/custom)')
+        exit(1)
+
+    if (not config.config['hpc']) and\
+       (not config.config['local']) and\
+       (not config.config['custom']):
+        log._logger.error(
+            'You must specify a compute cluster environment (hpc/local/custom)'
+        )
+        exit(1)
+
+    if config.config['custom'] and (not config.config['scheduler']):
+        log._logger.error(
+            'The custom compute environment requires a scheduler address to be set'
+        )
         exit(1)
 
 

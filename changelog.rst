@@ -2,6 +2,20 @@
 Changelog
 =========
 
+1.2.0 - 2019.12.04
+------------------
+
+Added
+'''''
+
+- Add initial support for custom cluster environments.
+
+Changed
+'''''''
+
+- Rename configuration option :code:`resources.environment.cloud` to
+  :code:`resources.environment.custom`.
+
 1.1.0 - 2019.12.03
 ------------------
 

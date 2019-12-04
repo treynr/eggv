@@ -105,7 +105,7 @@ The complete file, pipeline defaults, and option explanations are listed below.
       environment:
         hpc: true
         local: false
-        cloud: false
+        custom: false
 
       cores: 4
       processes: 4
@@ -134,9 +134,9 @@ resources.environment.hpc
 resources.environment.local
     boolean. If true, the pipeline will initialize a local, single machine cluster.
 
-resources.environment.cloud
-    boolean. (Not yet implemented) If true, the pipeline will initialize a cluster
-    for cloud environments.
+resources.environment.custom
+    boolean. If true, the pipeline will initialize a cluster for custom environments.
+    This option requires the scheduler option to be set.
 
 resources.cores
     integer. The number of CPU cores available to each cluster worker process. This
@@ -149,7 +149,7 @@ resources.processes
     2 cores (threads) each. If cores = 4 and processes = 4, four worker processes will
     spawn utilizing 1 core each.
 
-resources.processes
+resources.jobs
     integer. The number of worker nodes to use.
     This option only has an effect if running an HPC cluster.
 

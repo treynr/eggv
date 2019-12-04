@@ -37,6 +37,7 @@ def _initialize_cluster(config: configuration.Config):
     return cluster.initialize_cluster(
         hpc=config.config['resources']['environment']['hpc'],
         temp=config.config['directories']['temp'],
+        scheduler=config.config['scheduler'],
         **config.config['resources']
     )
 
