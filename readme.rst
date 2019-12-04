@@ -192,7 +192,20 @@ species
 Installation
 ------------
 
-Idk yet.
+The current release is :code:`v1.2.0`.
+Install via pip:
+
+.. code:: bash
+
+    $ pip install https://github.com/treynr/eggv/archive/v1.2.0.tar.gz
+
+Or clone this repo and install via :code:`setup.py`:
+
+.. code:: bash
+
+    $ git clone https://github.com/treynr/eggv.git
+    $ cd eggv
+    $ python setup.py install
 
 
 Requirements
